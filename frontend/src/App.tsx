@@ -1,0 +1,61 @@
+import React, { useState } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { TopBar } from './components/layout/TopBar';
+import { BottomNav, type AbaAtiva } from './components/layout/BottomNav';
+import { LoginPage } from './pages/LoginPage';
+import { MapaOperacionalPage } from './pages/MapaOperacionalPage';
+import { RelatoriosPage } from './pages/RelatoriosPage';
+
+const AppShell: React.FC = () => {
+  const { usuario, carregandoSessao, isGerente } = useAuth();
+  const [abaAtiva, setAbaAtiva] = useState<AbaAtiva>('mapa');
+  const [sinalAtualizacao, setSinalAtualizacao] = useState(0);
+  const [atualizando, setAtualizando] = useState(false);
+
+  if (carregandoSessao) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-slate-300 text-sm font-semibold">
+        Verificando sessão...
+      </div>
+    );
+  }
+
+  if (!usuario) {
+    return <LoginPage />;
+  }
+
+  const abaEfetiva: AbaAtiva = !isGerente && abaAtiva === 'relatorios' ? 'mapa' : abaAtiva;
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <TopBar
+        atualizando={atualizando}
+        onRefresh={() => setSinalAtualizacao((n) => n + 1)}
+      />
+
+      <main>
+        {abaEfetiva === 'mapa' ? (
+          <MapaOperacionalPage
+            sinalAtualizacao={sinalAtualizacao}
+            onMudarEstadoCarregamento={setAtualizando}
+          />
+        ) : (
+          <RelatoriosPage
+            sinalAtualizacao={sinalAtualizacao}
+            onMudarEstadoCarregamento={setAtualizando}
+          />
+        )}
+      </main>
+
+      <BottomNav abaAtiva={abaEfetiva} onSelecionarAba={setAbaAtiva} />
+    </div>
+  );
+};
+
+export const App: React.FC = () => (
+  <AuthProvider>
+    <AppShell />
+  </AuthProvider>
+);
+
+export default App;

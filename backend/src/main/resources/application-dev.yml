@@ -1,0 +1,8 @@
+app:
+  cors:
+    allowed-origin-patterns: "*"
+
+logging:
+  level:
+    br.com.pousada.gestao: INFO
+    org.flywaydb: INFO

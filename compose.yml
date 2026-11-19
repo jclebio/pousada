@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: docker.io/library/postgres:16
+    container_name: pousada-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pousada_db}
+      POSTGRES_USER: ${POSTGRES_USER:-pousada}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pousada123}
+      TZ: America/Sao_Paulo
+    ports:
+      - "5432:5432"
+    volumes:
+      - pousada_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pousada} -d ${POSTGRES_DB:-pousada_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pousada_pgdata:
