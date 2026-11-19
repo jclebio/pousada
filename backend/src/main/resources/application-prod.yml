@@ -1,11 +1,13 @@
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+
 app:
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGINS:https://seu-dominio.com.br}
   whatsapp:
-    webhook-url: ${WHATSAPP_WEBHOOK_URL}
+    webhook-url: ${WHATSAPP_WEBHOOK_URL:}
     api-token: ${WHATSAPP_API_TOKEN:}
     destino-grupo: ${WHATSAPP_DESTINO_GRUPO:}
-
-logging:
-  level:
-    br.com.pousada.gestao: INFO
