@@ -22,6 +22,35 @@ export interface UsuarioResumo {
   perfil: PerfilUsuario;
 }
 
+export interface UsuarioDetalhes {
+  id: number;
+  nome: string;
+  login: string;
+  perfil: PerfilUsuario;
+  ativo: boolean;
+  criadoEm?: string;
+}
+
+export interface AtualizarMeuPerfilPayload {
+  nome?: string;
+  senhaAtual?: string;
+  novaSenha?: string;
+}
+
+export interface AtualizarUsuarioPorGerentePayload {
+  nome: string;
+  perfil: PerfilUsuario;
+  ativo: boolean;
+  novaSenha?: string;
+}
+
+export interface CriarUsuarioPayload {
+  nome: string;
+  login: string;
+  senha: string;
+  perfil: PerfilUsuario;
+}
+
 export interface LoginResponse {
   token: string;
   usuario: UsuarioResumo;

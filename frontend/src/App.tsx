@@ -7,6 +7,7 @@ import { MapaOperacionalPage } from './pages/MapaOperacionalPage';
 import { RelatoriosPage } from './pages/RelatoriosPage';
 import { HistoricoPage } from './pages/HistoricoPage';
 import { WhatsAppModal } from './components/common/WhatsAppModal';
+import { ModalMeuPerfil } from './components/perfil/ModalMeuPerfil';
 
 const AppShell: React.FC = () => {
   const { usuario, carregandoSessao, isGerente } = useAuth();
@@ -15,6 +16,7 @@ const AppShell: React.FC = () => {
   const [atualizando, setAtualizando] = useState(false);
   const [mensagemWhatsappModal, setMensagemWhatsappModal] = useState<string | null>(null);
   const [ultimaMensagemWhatsapp, setUltimaMensagemWhatsapp] = useState<string | null>(null);
+  const [modalPerfilAberto, setModalPerfilAberto] = useState(false);
 
   const handleNotificarMensagemWhatsapp = (msg: string | null | undefined) => {
     if (msg && msg.trim()) {
@@ -49,6 +51,7 @@ const AppShell: React.FC = () => {
             setMensagemWhatsappModal(ultimaMensagemWhatsapp);
           }
         }}
+        onAbrirMeuPerfil={() => setModalPerfilAberto(true)}
       />
 
       <main>
@@ -71,6 +74,11 @@ const AppShell: React.FC = () => {
       <WhatsAppModal
         mensagem={mensagemWhatsappModal}
         onFechar={() => setMensagemWhatsappModal(null)}
+      />
+
+      <ModalMeuPerfil
+        aberto={modalPerfilAberto}
+        onFechar={() => setModalPerfilAberto(false)}
       />
 
       <BottomNav abaAtiva={abaEfetiva} onSelecionarAba={setAbaAtiva} />

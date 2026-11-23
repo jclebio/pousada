@@ -111,19 +111,21 @@
 
 ---
 
-### 🔲 Item 5 — Alteração de nome e senha de usuários
-**Status:** Pendente
+### ✅ Item 5 — Alteração de nome e senha de usuários
+**Status:** Concluído (2026-11-23)
 
 **Escopo:**
 - Endpoint `PUT /api/usuarios/meu-perfil` (autenticado): altera `nome` e/ou `senha` do próprio usuário (exige `senhaAtual` para confirmar; nova senha mínimo 8 caracteres; salva com `BCryptPasswordEncoder`).
-- Endpoint `GET /api/usuarios` + `PUT /api/usuarios/{id}` exclusivos para `GERENTE`: listar e editar dados de qualquer usuário (sem exigir senha atual; pode ativar/inativar).
-- Frontend: tela/modal "Meu Perfil" acessível pelo menu; para `GERENTE`, lista de usuários com ação de editar.
-- Sem migration de schema (colunas já existem: `nome`, `senha_hash`, `ativo`, `perfil`).
+- Endpoints `GET /api/usuarios`, `POST /api/usuarios` e `PUT /api/usuarios/{id}` exclusivos para `GERENTE`: listar, criar e editar dados de qualquer usuário (sem exigir senha atual; ativação/inativação; redefinição de senha).
+- Frontend: modal "Meu Perfil" acessível clicando no nome/usuário ou ícone da barra superior; para `GERENTE`, aba integrada "Gerenciar Equipe" para cadastro, edição e redefinição de senhas.
+- Sem migration de schema (colunas já existentes: `nome`, `senha_hash`, `ativo`, `perfil`).
 
 **Critério de aceite:**
-- Senha antiga incorreta retorna 400 com mensagem clara.
-- Nova senha é salva em BCrypt antes de persistir.
-- `GERENTE` pode redefinir senha de qualquer usuário sem informar a senha antiga.
+- [x] Senha antiga incorreta retorna 400 com mensagem clara ("Senha atual incorreta.").
+- [x] Nova senha é validada (mínimo 8 caracteres) e salva com BCrypt antes de persistir.
+- [x] `GERENTE` pode redefinir senha de qualquer usuário sem informar a senha antiga.
+- [x] `GERENTE` pode cadastrar novos usuários e ativar/inativar contas, com proteção contra auto-inativação.
+- [x] Suíte de testes de integração cobrindo todos os fluxos de perfil, validação de senhas e permissões.
 
 ---
 

@@ -1,5 +1,8 @@
 import type {
+  AtualizarMeuPerfilPayload,
+  AtualizarUsuarioPorGerentePayload,
   CheckinPayload,
+  CriarUsuarioPayload,
   EditarHospedagemPayload,
   HistoricoPage,
   HospedagemResponse,
@@ -11,6 +14,7 @@ import type {
   ReservaItem,
   ReservaPayload,
   StatusQuarto,
+  UsuarioDetalhes,
   UsuarioResumo
 } from '../types';
 
@@ -84,6 +88,26 @@ export const api = {
     }),
 
   me: () => requisitar<UsuarioResumo>('/auth/me'),
+
+  atualizarMeuPerfil: (payload: AtualizarMeuPerfilPayload) =>
+    requisitar<UsuarioDetalhes>('/usuarios/meu-perfil', {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    }),
+
+  listarUsuarios: () => requisitar<UsuarioDetalhes[]>('/usuarios'),
+
+  criarUsuario: (payload: CriarUsuarioPayload) =>
+    requisitar<UsuarioDetalhes>('/usuarios', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+
+  atualizarUsuarioPorGerente: (id: number, payload: AtualizarUsuarioPorGerentePayload) =>
+    requisitar<UsuarioDetalhes>(`/usuarios/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    }),
 
   listarQuartos: (incluirInativos = false) =>
     requisitar<QuartoMapa[]>(`/quartos?incluirInativos=${incluirInativos}`),

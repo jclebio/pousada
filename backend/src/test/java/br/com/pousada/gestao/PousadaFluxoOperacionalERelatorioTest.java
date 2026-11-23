@@ -571,6 +571,133 @@ class PousadaFluxoOperacionalERelatorioTest {
         assertThat(csv).contains("500,00");
     }
 
+    // ─── Item 5: Alteração de nome e senha de usuários ────────────────────────
+
+    @Test
+    void devePermitirUsuarioAtualizarProprioNomeESenhaComSenhaAtualCorreta() throws Exception {
+        // 1. Tentar alterar senha fornecendo senha atual errada -> deve retornar 400
+        mockMvc.perform(put("/api/usuarios/meu-perfil")
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nome": "Atendente Modificado",
+                                  "senhaAtual": "senhaErrada123",
+                                  "novaSenha": "novaSenhaValida123"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.mensagem").value("Senha atual incorreta."));
+
+        // 2. Tentar nova senha curta (< 8 chars) -> deve retornar 400
+        mockMvc.perform(put("/api/usuarios/meu-perfil")
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nome": "Atendente Modificado",
+                                  "senhaAtual": "atendente123",
+                                  "novaSenha": "123"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+
+        // 3. Atualizar com sucesso nome e senha
+        mockMvc.perform(put("/api/usuarios/meu-perfil")
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nome": "Atendente Renomeado",
+                                  "senhaAtual": "atendente123",
+                                  "novaSenha": "novaSenhaValida123"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nome").value("Atendente Renomeado"))
+                .andExpect(jsonPath("$.login").value("atendente1"));
+
+        // 4. Nova senha funciona para login
+        String novoToken = login("atendente1", "novaSenhaValida123");
+        assertThat(novoToken).isNotBlank();
+
+        // 5. Senha antiga não funciona mais
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"login\":\"atendente1\",\"senha\":\"atendente123\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void devePermitirGerenteListarCriarEAtualizarUsuariosERedefinirSenhaSemSenhaAntiga() throws Exception {
+        Usuario atendente = usuarioRepository.findByLogin("atendente1").orElseThrow();
+
+        // 1. Atendente comum não pode acessar GET /api/usuarios -> 403 Forbidden
+        mockMvc.perform(get("/api/usuarios")
+                        .header("Authorization", "Bearer " + tokenAtendente))
+                .andExpect(status().isForbidden());
+
+        // 2. Gerente lista todos os usuários -> 200 OK
+        mockMvc.perform(get("/api/usuarios")
+                        .header("Authorization", "Bearer " + tokenGerente))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+
+        // 3. Gerente cadastra novo atendente
+        mockMvc.perform(post("/api/usuarios")
+                        .header("Authorization", "Bearer " + tokenGerente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nome": "Novo Atendente Teste",
+                                  "login": "atendente_novo",
+                                  "senha": "senhaInicial123",
+                                  "perfil": "ATENDENTE"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.nome").value("Novo Atendente Teste"))
+                .andExpect(jsonPath("$.login").value("atendente_novo"))
+                .andExpect(jsonPath("$.ativo").value(true));
+
+        // Novo atendente consegue logar
+        String tokenNovo = login("atendente_novo", "senhaInicial123");
+        assertThat(tokenNovo).isNotBlank();
+
+        // 4. Gerente redefine senha de atendente existente sem precisar da senha antiga
+        mockMvc.perform(put("/api/usuarios/" + atendente.getId())
+                        .header("Authorization", "Bearer " + tokenGerente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nome": "Atendente Atualizado Pelo Gerente",
+                                  "perfil": "ATENDENTE",
+                                  "ativo": true,
+                                  "novaSenha": "senhaResetadaPeloGerente123"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nome").value("Atendente Atualizado Pelo Gerente"));
+
+        // Atendente consegue logar com a senha redefinida pelo gerente
+        String tokenResetado = login("atendente1", "senhaResetadaPeloGerente123");
+        assertThat(tokenResetado).isNotBlank();
+
+        // 5. Gerente não pode inativar a si próprio
+        mockMvc.perform(put("/api/usuarios/" + gerente.getId())
+                        .header("Authorization", "Bearer " + tokenGerente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nome": "Gerente Geral",
+                                  "perfil": "GERENTE",
+                                  "ativo": false
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.mensagem").value("Você não pode inativar seu próprio usuário."));
+    }
+
     private String login(String login, String senha) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

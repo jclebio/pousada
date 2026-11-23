@@ -14,6 +14,7 @@ interface AuthContextValue {
   isGerente: boolean;
   entrar: (login: string, senha: string) => Promise<void>;
   sair: () => void;
+  atualizarUsuarioLocal: (novoUsuario: UsuarioResumo) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -59,6 +60,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUsuario(null);
   };
 
+  const atualizarUsuarioLocal = (novoUsuario: UsuarioResumo) => {
+    const token = obterTokenSalvo();
+    if (token) {
+      salvarSessao(token, novoUsuario);
+    }
+    setUsuario(novoUsuario);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -66,7 +75,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         carregandoSessao,
         isGerente: usuario?.perfil === 'GERENTE',
         entrar,
-        sair
+        sair,
+        atualizarUsuarioLocal
       }}
     >
       {children}
