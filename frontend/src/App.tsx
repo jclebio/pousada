@@ -17,6 +17,7 @@ const AppShell: React.FC = () => {
   const [mensagemWhatsappModal, setMensagemWhatsappModal] = useState<string | null>(null);
   const [ultimaMensagemWhatsapp, setUltimaMensagemWhatsapp] = useState<string | null>(null);
   const [modalPerfilAberto, setModalPerfilAberto] = useState(false);
+  const [modalPerfilAbaInicial, setModalPerfilAbaInicial] = useState<'perfil' | 'usuarios'>('perfil');
 
   const handleNotificarMensagemWhatsapp = (msg: string | null | undefined) => {
     if (msg && msg.trim()) {
@@ -51,7 +52,10 @@ const AppShell: React.FC = () => {
             setMensagemWhatsappModal(ultimaMensagemWhatsapp);
           }
         }}
-        onAbrirMeuPerfil={() => setModalPerfilAberto(true)}
+        onAbrirMeuPerfil={(aba) => {
+          setModalPerfilAbaInicial(aba || 'perfil');
+          setModalPerfilAberto(true);
+        }}
       />
 
       <main>
@@ -79,6 +83,7 @@ const AppShell: React.FC = () => {
       <ModalMeuPerfil
         aberto={modalPerfilAberto}
         onFechar={() => setModalPerfilAberto(false)}
+        abaInicial={modalPerfilAbaInicial}
       />
 
       <BottomNav abaAtiva={abaEfetiva} onSelecionarAba={setAbaAtiva} />

@@ -19,9 +19,10 @@ import type { PerfilUsuario, UsuarioDetalhes } from '../../types';
 interface ModalMeuPerfilProps {
   aberto: boolean;
   onFechar: () => void;
+  abaInicial?: 'perfil' | 'usuarios';
 }
 
-export const ModalMeuPerfil: React.FC<ModalMeuPerfilProps> = ({ aberto, onFechar }) => {
+export const ModalMeuPerfil: React.FC<ModalMeuPerfilProps> = ({ aberto, onFechar, abaInicial }) => {
   const { usuario, isGerente, atualizarUsuarioLocal } = useAuth();
 
   const [abaAtiva, setAbaAtiva] = useState<'perfil' | 'usuarios'>('perfil');
@@ -61,6 +62,7 @@ export const ModalMeuPerfil: React.FC<ModalMeuPerfilProps> = ({ aberto, onFechar
 
   useEffect(() => {
     if (aberto && usuario) {
+      setAbaAtiva(abaInicial && isGerente ? abaInicial : 'perfil');
       setNome(usuario.nome);
       setSenhaAtual('');
       setNovaSenha('');
@@ -70,7 +72,7 @@ export const ModalMeuPerfil: React.FC<ModalMeuPerfilProps> = ({ aberto, onFechar
       setUsuarioEditando(null);
       setMostrandoNovoUsuario(false);
     }
-  }, [aberto, usuario]);
+  }, [aberto, usuario, abaInicial, isGerente]);
 
   const carregarUsuarios = async () => {
     if (!isGerente) return;

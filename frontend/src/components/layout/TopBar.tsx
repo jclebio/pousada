@@ -1,5 +1,5 @@
 import React from 'react';
-import { Hotel, LogOut, MessageSquare, RefreshCw, ShieldCheck, User } from 'lucide-react';
+import { Hotel, LogOut, MessageSquare, RefreshCw, ShieldCheck, User, Users } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 interface TopBarProps {
@@ -7,7 +7,7 @@ interface TopBarProps {
   atualizando?: boolean;
   temMensagemWhatsapp?: boolean;
   onAbrirMensagemWhatsapp?: () => void;
-  onAbrirMeuPerfil?: () => void;
+  onAbrirMeuPerfil?: (abaInicial?: 'perfil' | 'usuarios') => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -30,7 +30,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <h1 className="text-base font-bold leading-tight tracking-tight">Pousada Gestão</h1>
             <button
               type="button"
-              onClick={onAbrirMeuPerfil}
+              onClick={() => onAbrirMeuPerfil?.('perfil')}
               title="Meu Perfil / Alterar Senha"
               className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-white transition active:scale-95 group text-left"
             >
@@ -59,12 +59,26 @@ export const TopBar: React.FC<TopBarProps> = ({
           {onAbrirMeuPerfil && (
             <button
               type="button"
-              onClick={onAbrirMeuPerfil}
-              aria-label="Meu Perfil e Senha"
-              title="Meu Perfil e Senha"
-              className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 text-slate-200 active:scale-95 hover:bg-slate-700 transition"
+              onClick={() => onAbrirMeuPerfil(isGerente ? 'usuarios' : 'perfil')}
+              aria-label={isGerente ? 'Gerenciar Usuários e Equipe' : 'Meu Perfil e Senha'}
+              title={isGerente ? 'Gerenciar Usuários e Equipe' : 'Meu Perfil e Senha'}
+              className={`flex h-10 items-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold active:scale-95 transition ${
+                isGerente
+                  ? 'bg-slate-800 text-amber-300 border border-amber-500/30 hover:bg-slate-700'
+                  : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+              }`}
             >
-              <User className="h-4 w-4" />
+              {isGerente ? (
+                <>
+                  <Users className="h-4 w-4 text-amber-400" />
+                  <span className="hidden sm:inline">Usuários</span>
+                </>
+              ) : (
+                <>
+                  <User className="h-4 w-4 text-emerald-400" />
+                  <span className="hidden sm:inline">Perfil</span>
+                </>
+              )}
             </button>
           )}
           {temMensagemWhatsapp && onAbrirMensagemWhatsapp && (
