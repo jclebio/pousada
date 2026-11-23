@@ -40,6 +40,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -363,6 +364,211 @@ class PousadaFluxoOperacionalERelatorioTest {
                         .header("Authorization", "Bearer " + tokenAtendente))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].proximaReserva").doesNotExist());
+    }
+
+    @Test
+    void deveRenovarDiariasValidandoConflitosEEditarComAuditoria() throws Exception {
+        LocalDate hoje = LocalDate.now();
+
+        // Checkin de 2 diárias no quarto01 (de hoje até hoje + 2)
+        Hospedagem ativa = salvarHospedagem(quarto01, "Lucas Hóspede", hoje, 2,
+                null, StatusHospedagem.ATIVA,
+                new BigDecimal("400.00"), BigDecimal.ZERO, new BigDecimal("400.00"), BigDecimal.ZERO);
+        quarto01.setStatus(StatusQuarto.OCUPADO);
+        quartoRepository.save(quarto01);
+
+        // Reserva futura agendada para hoje + 3 até hoje + 5
+        salvarHospedagem(quarto01, "Próximo Hóspede", hoje.plusDays(3), 2,
+                null, StatusHospedagem.RESERVADA,
+                new BigDecimal("400.00"), new BigDecimal("100.00"), BigDecimal.ZERO, BigDecimal.ZERO);
+
+        // 1. Tentar renovar por +2 diárias (de hoje+2 até hoje+4) -> conflito com reserva de hoje+3!
+        mockMvc.perform(patch("/api/hospedagens/" + ativa.getId() + "/renovar")
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "diariasAdicionais": 2,
+                                  "valorAdicional": 400.00,
+                                  "valorPagoAgora": 0.00,
+                                  "observacao": "Quer esticar a viagem"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.mensagem").value(org.hamcrest.Matchers.containsString("Conflito de datas no Quarto 01")));
+
+        // 2. Renovar por +1 diária (de hoje+2 até hoje+3) -> sem sobreposição, deve funcionar!
+        mockMvc.perform(patch("/api/hospedagens/" + ativa.getId() + "/renovar")
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "diariasAdicionais": 1,
+                                  "valorAdicional": 200.00,
+                                  "valorPagoAgora": 200.00,
+                                  "observacao": "Fica mais 1 dia"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quantidadeDiarias").value(3))
+                .andExpect(jsonPath("$.valorTotal").value(600.00))
+                .andExpect(jsonPath("$.totalRecebido").value(600.00))
+                .andExpect(jsonPath("$.saldoAReceber").value(0.00))
+                .andExpect(jsonPath("$.mensagemWhatsapp").isNotEmpty());
+
+        // 3. Finalizar hospedagem para testar regras de edição pós-checkout
+        ativa = hospedagemRepository.findById(ativa.getId()).orElseThrow();
+        ativa.setStatusHospedagem(StatusHospedagem.FINALIZADA);
+        ativa.setDataCheckoutReal(LocalDateTime.now());
+        hospedagemRepository.save(ativa);
+
+        // 4. Atendente tenta editar hospedagem finalizada -> bloqueado
+        mockMvc.perform(put("/api/hospedagens/" + ativa.getId())
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nomeHospede": "Lucas Alterado",
+                                  "quantidadePessoas": 2,
+                                  "valorTotal": 600.00,
+                                  "valorPagoCheckin": 600.00,
+                                  "motivo": "Correção de grafia"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.mensagem").value(org.hamcrest.Matchers.containsString("Apenas usuários com perfil GERENTE podem editar hospedagens já finalizadas")));
+
+        // 5. Gerente edita hospedagem finalizada -> permitido com motivo e auditoria registrada
+        mockMvc.perform(put("/api/hospedagens/" + ativa.getId())
+                        .header("Authorization", "Bearer " + tokenGerente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nomeHospede": "Lucas Corrigido",
+                                  "quantidadePessoas": 2,
+                                  "valorTotal": 650.00,
+                                  "valorPagoCheckin": 600.00,
+                                  "motivo": "Ajuste de consumo pós-fechamento"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nomeHospede").value("Lucas Corrigido"))
+                .andExpect(jsonPath("$.valorTotal").value(650.00));
+    }
+
+    // ─── Item 4: Histórico de hospedagens ─────────────────────────────────────
+
+    @Test
+    void deveListarHistoricoPaginadoComFiltros() throws Exception {
+        LocalDate hoje = LocalDate.now();
+
+        // Cria hospedagens com status variados
+        salvarHospedagem(quarto01, "Carlos Silva", hoje.minusDays(10), 3,
+                hoje.minusDays(7).atStartOfDay(), StatusHospedagem.FINALIZADA,
+                new BigDecimal("600.00"), BigDecimal.ZERO, new BigDecimal("600.00"), BigDecimal.ZERO);
+        salvarHospedagem(quarto01, "Ana Beatriz", hoje.minusDays(5), 2,
+                null, StatusHospedagem.ATIVA,
+                new BigDecimal("400.00"), BigDecimal.ZERO, new BigDecimal("400.00"), BigDecimal.ZERO);
+        salvarHospedagem(quarto02, "Carlos Pereira", hoje.minusDays(20), 5,
+                hoje.minusDays(15).atStartOfDay(), StatusHospedagem.FINALIZADA,
+                new BigDecimal("1000.00"), BigDecimal.ZERO, new BigDecimal("1000.00"), BigDecimal.ZERO);
+        salvarHospedagem(quarto02, "Fernanda Oliveira", hoje.plusDays(5), 3,
+                null, StatusHospedagem.RESERVADA,
+                new BigDecimal("900.00"), new BigDecimal("100.00"), BigDecimal.ZERO, BigDecimal.ZERO);
+        salvarHospedagem(quarto01, "Maria Santos", hoje.minusDays(30), 2,
+                null, StatusHospedagem.CANCELADA,
+                new BigDecimal("400.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+
+        // 1. Sem filtros: retorna todos os 5 registros (paginados, 20 por página)
+        mockMvc.perform(get("/api/hospedagens")
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .param("page", "0")
+                        .param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(5))
+                .andExpect(jsonPath("$.content").isArray());
+
+        // 2. Filtro por status=FINALIZADA: deve retornar 2
+        mockMvc.perform(get("/api/hospedagens")
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .param("status", "FINALIZADA"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2));
+
+        // 3. Filtro por status=RESERVADA: deve retornar 1
+        mockMvc.perform(get("/api/hospedagens")
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .param("status", "RESERVADA"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].nomeHospede").value("Fernanda Oliveira"));
+
+        // 4. Filtro por nomeHospede=Carlos: deve retornar 2 (Carlos Silva e Carlos Pereira)
+        mockMvc.perform(get("/api/hospedagens")
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .param("nomeHospede", "Carlos"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2));
+
+        // 5. Filtro por quartoId
+        mockMvc.perform(get("/api/hospedagens")
+                        .header("Authorization", "Bearer " + tokenGerente)
+                        .param("quartoId", String.valueOf(quarto02.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2));
+
+        // 6. Filtro por dataInicio e dataFim abrangendo apenas os últimos 7 dias
+        mockMvc.perform(get("/api/hospedagens")
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .param("dataInicio", hoje.minusDays(7).toString())
+                        .param("dataFim", hoje.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1)); // Ana Beatriz: checkin hoje-5
+
+        // 7. Ordenação padrão DESC: o primeiro resultado deve ter dataCheckin mais recente
+        MvcResult resultOrdem = mockMvc.perform(get("/api/hospedagens")
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .param("status", "FINALIZADA"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode body = objectMapper.readTree(resultOrdem.getResponse().getContentAsString());
+        JsonNode content = body.get("content");
+        assertThat(content).isNotNull();
+        String primeiroCheckin = content.get(0).get("dataCheckin").asText();
+        String segundoCheckin = content.get(1).get("dataCheckin").asText();
+        assertThat(primeiroCheckin).isGreaterThan(segundoCheckin);
+
+        // 8. Paginação: size=2 → page 0 tem 2 itens, totalElements=5, last=false
+        mockMvc.perform(get("/api/hospedagens")
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .param("page", "0")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(5))
+                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.last").value(false));
+    }
+
+    @Test
+    void deveExportarCsvDoHistoricoComFiltros() throws Exception {
+        LocalDate hoje = LocalDate.now();
+        salvarHospedagem(quarto01, "Carlos Export", hoje.minusDays(3), 2,
+                hoje.minusDays(1).atStartOfDay(), StatusHospedagem.FINALIZADA,
+                new BigDecimal("500.00"), BigDecimal.ZERO, new BigDecimal("500.00"), BigDecimal.ZERO);
+
+        MvcResult result = mockMvc.perform(get("/api/hospedagens/exportar/csv")
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .param("status", "FINALIZADA"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "text/csv;charset=UTF-8"))
+                .andExpect(header().exists("Content-Disposition"))
+                .andReturn();
+
+        String csv = result.getResponse().getContentAsString();
+        assertThat(csv).contains("Quarto;Hóspede;Status;Pessoas;Check-in;Saída Prevista;Check-out Real;Diárias;Valor Total;Valor Antecipado;Valor Check-in;Valor Check-out;Total Recebido;Saldo a Receber;Registrado Por");
+        assertThat(csv).contains("Carlos Export");
+        assertThat(csv).contains("FINALIZADA");
+        assertThat(csv).contains("500,00");
     }
 
     private String login(String login, String senha) throws Exception {

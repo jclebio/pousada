@@ -1,8 +1,8 @@
 import React from 'react';
-import { BarChart3, LayoutGrid } from 'lucide-react';
+import { BarChart3, History, LayoutGrid } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-export type AbaAtiva = 'mapa' | 'relatorios';
+export type AbaAtiva = 'mapa' | 'relatorios' | 'historico';
 
 interface BottomNavProps {
   abaAtiva: AbaAtiva;
@@ -26,6 +26,19 @@ export const BottomNav: React.FC<BottomNavProps> = ({ abaAtiva, onSelecionarAba 
         >
           <LayoutGrid className="h-5 w-5" />
           <span>Mapa</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onSelecionarAba('historico')}
+          className={`flex flex-1 flex-col items-center justify-center gap-1 rounded-xl py-2 text-xs font-semibold transition active:scale-95 ${
+            abaAtiva === 'historico'
+              ? 'text-emerald-700 bg-emerald-50'
+              : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <History className="h-5 w-5" />
+          <span>Histórico</span>
         </button>
 
         {isGerente && (

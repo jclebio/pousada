@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { CalendarClock, Plus } from 'lucide-react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import type {
   CheckinPayload,
+  EditarHospedagemPayload,
   HospedagemResumoMapa,
   QuartoMapa,
   QuartoRequest,
+  RenovarDiariaPayload,
   ReservaItem,
   ReservaPayload,
   StatusQuarto
@@ -20,15 +22,19 @@ import { CheckoutModal } from '../components/mapa/CheckoutModal';
 import { ManutencaoObservacaoModal } from '../components/mapa/ManutencaoObservacaoModal';
 import { EstornoModal } from '../components/mapa/EstornoModal';
 import { QuartoFormModal } from '../components/mapa/QuartoFormModal';
+import { RenovarDiariaModal } from '../components/mapa/RenovarDiariaModal';
+import { EditarHospedagemModal } from '../components/mapa/EditarHospedagemModal';
 
 interface MapaOperacionalPageProps {
   sinalAtualizacao: number;
   onMudarEstadoCarregamento: (carregando: boolean) => void;
+  onNotificarMensagemWhatsapp?: (msg: string | null | undefined) => void;
 }
 
 export const MapaOperacionalPage: React.FC<MapaOperacionalPageProps> = ({
   sinalAtualizacao,
-  onMudarEstadoCarregamento
+  onMudarEstadoCarregamento,
+  onNotificarMensagemWhatsapp
 }) => {
   const { isGerente } = useAuth();
   const [quartos, setQuartos] = useState<QuartoMapa[]>([]);
@@ -41,13 +47,16 @@ export const MapaOperacionalPage: React.FC<MapaOperacionalPageProps> = ({
   // Modais
   const [quartoCheckin, setQuartoCheckin] = useState<QuartoMapa | null>(null);
   const [reservaCheckin, setReservaCheckin] = useState<HospedagemResumoMapa | null>(null);
-  const [quartoReserva, setQuartoReserva] = useState<QuartoMapa | null>(null);
+  // quartoReserva: null = modal fechado | QuartoMapa = pré-selecionado | 'global' = sem pré-seleção
+  const [quartoReserva, setQuartoReserva] = useState<QuartoMapa | 'global' | null>(null);
   const [quartoCheckout, setQuartoCheckout] = useState<QuartoMapa | null>(null);
   const [modalTexto, setModalTexto] = useState<{
     quarto: QuartoMapa;
     modo: 'manutencao' | 'observacao';
   } | null>(null);
   const [quartoEstorno, setQuartoEstorno] = useState<QuartoMapa | null>(null);
+  const [quartoRenovacao, setQuartoRenovacao] = useState<QuartoMapa | null>(null);
+  const [quartoEdicaoHosp, setQuartoEdicaoHosp] = useState<QuartoMapa | null>(null);
   const [modalQuartoForm, setModalQuartoForm] = useState<{
     aberto: boolean;
     quarto?: QuartoMapa | null;
@@ -93,8 +102,9 @@ export const MapaOperacionalPage: React.FC<MapaOperacionalPageProps> = ({
 
   const handleStatusDireto = async (quarto: QuartoMapa, novoStatus: StatusQuarto) => {
     try {
-      await api.alterarStatusQuarto(quarto.id, novoStatus);
+      const res = await api.alterarStatusQuarto(quarto.id, novoStatus);
       exibirToast(`Quarto ${quarto.numero} atualizado.`);
+      if (res.mensagemWhatsapp) onNotificarMensagemWhatsapp?.(res.mensagemWhatsapp);
       await carregarDados();
     } catch (err) {
       setErroBanner(err instanceof Error ? err.message : 'Falha ao mudar status do quarto.');
@@ -132,8 +142,9 @@ export const MapaOperacionalPage: React.FC<MapaOperacionalPageProps> = ({
       return;
     }
     try {
-      await api.cancelarReserva(reservaId);
+      const res = await api.cancelarReserva(reservaId);
       exibirToast('Reserva cancelada com sucesso.');
+      if (res.mensagemWhatsapp) onNotificarMensagemWhatsapp?.(res.mensagemWhatsapp);
       await carregarDados();
     } catch (err) {
       setErroBanner(err instanceof Error ? err.message : 'Falha ao cancelar reserva.');
@@ -141,35 +152,39 @@ export const MapaOperacionalPage: React.FC<MapaOperacionalPageProps> = ({
   };
 
   const handleConfirmarCheckin = async (payload: CheckinPayload) => {
-    await api.realizarCheckin(payload);
+    const res = await api.realizarCheckin(payload);
     setQuartoCheckin(null);
     setReservaCheckin(null);
     // Voltar ao mapa geral após check-in a partir da lista de reservas
     if (filtro === 'RESERVADO') setFiltro('TODOS');
     exibirToast('Check-in realizado com sucesso!');
+    if (res.mensagemWhatsapp) onNotificarMensagemWhatsapp?.(res.mensagemWhatsapp);
     await carregarDados();
   };
 
   const handleConfirmarReserva = async (payload: ReservaPayload) => {
-    await api.registrarReserva(payload);
+    const res = await api.registrarReserva(payload);
     setQuartoReserva(null);
     exibirToast('Reserva registrada!');
+    if (res.mensagemWhatsapp) onNotificarMensagemWhatsapp?.(res.mensagemWhatsapp);
     await carregarDados();
   };
 
   const handleConfirmarCheckout = async (valorPagoCheckout: number, obs?: string) => {
     if (!quartoCheckout) return;
-    await api.realizarCheckout(quartoCheckout.id, valorPagoCheckout, obs);
+    const res = await api.realizarCheckout(quartoCheckout.id, valorPagoCheckout, obs);
     setQuartoCheckout(null);
     exibirToast('Check-out concluído! Quarto aguardando limpeza.');
+    if (res.mensagemWhatsapp) onNotificarMensagemWhatsapp?.(res.mensagemWhatsapp);
     await carregarDados();
   };
 
   const handleConfirmarModalTexto = async (texto: string) => {
     if (!modalTexto) return;
     if (modalTexto.modo === 'manutencao') {
-      await api.alterarStatusQuarto(modalTexto.quarto.id, 'EM_MANUTENCAO', texto);
+      const res = await api.alterarStatusQuarto(modalTexto.quarto.id, 'EM_MANUTENCAO', texto);
       exibirToast(`Quarto ${modalTexto.quarto.numero} em manutenção.`);
+      if (res.mensagemWhatsapp) onNotificarMensagemWhatsapp?.(res.mensagemWhatsapp);
     } else {
       await api.atualizarObservacaoQuarto(modalTexto.quarto.id, texto || null);
       exibirToast('Observação atualizada.');
@@ -180,9 +195,30 @@ export const MapaOperacionalPage: React.FC<MapaOperacionalPageProps> = ({
 
   const handleConfirmarEstorno = async (motivo: string) => {
     if (!quartoEstorno?.hospedagemAtual) return;
-    await api.estornarHospedagem(quartoEstorno.hospedagemAtual.id, motivo);
+    const res = await api.estornarHospedagem(quartoEstorno.hospedagemAtual.id, motivo);
     setQuartoEstorno(null);
     exibirToast('Check-in estornado com sucesso.');
+    if (res.mensagemWhatsapp) onNotificarMensagemWhatsapp?.(res.mensagemWhatsapp);
+    await carregarDados();
+  };
+
+  const handleConfirmarRenovacao = async (payload: RenovarDiariaPayload) => {
+    if (!quartoRenovacao?.hospedagemAtual) return;
+    const res = await api.renovarDiarias(quartoRenovacao.hospedagemAtual.id, payload);
+    setQuartoRenovacao(null);
+    exibirToast('Diária renovada com sucesso!');
+    if (res.mensagemWhatsapp) onNotificarMensagemWhatsapp?.(res.mensagemWhatsapp);
+    await carregarDados();
+  };
+
+  const handleConfirmarEdicaoHospedagem = async (
+    hospedagemId: number,
+    payload: EditarHospedagemPayload
+  ) => {
+    const res = await api.editarHospedagem(hospedagemId, payload);
+    setQuartoEdicaoHosp(null);
+    exibirToast('Hospedagem atualizada com sucesso!');
+    if (res.mensagemWhatsapp) onNotificarMensagemWhatsapp?.(res.mensagemWhatsapp);
     await carregarDados();
   };
 
@@ -232,6 +268,18 @@ export const MapaOperacionalPage: React.FC<MapaOperacionalPageProps> = ({
         </div>
       )}
 
+      {/* Botão global "+ Nova Reserva" — visível a todos os perfis */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setQuartoReserva('global')}
+          className="flex min-h-[40px] items-center gap-1.5 rounded-xl border border-sky-300 bg-white px-3.5 py-2 text-xs font-bold text-sky-700 shadow-sm active:scale-95 hover:bg-sky-50"
+        >
+          <CalendarClock className="h-4 w-4" />
+          <span>+ Nova Reserva</span>
+        </button>
+      </div>
+
       {toastSucesso && (
         <div className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-md">
           {toastSucesso}
@@ -276,6 +324,8 @@ export const MapaOperacionalPage: React.FC<MapaOperacionalPageProps> = ({
               onAbrirManutencao={(q) => setModalTexto({ quarto: q, modo: 'manutencao' })}
               onAbrirObservacao={(q) => setModalTexto({ quarto: q, modo: 'observacao' })}
               onAbrirEstorno={setQuartoEstorno}
+              onAbrirRenovacao={setQuartoRenovacao}
+              onAbrirEdicaoHospedagem={setQuartoEdicaoHosp}
               onAbrirEdicaoQuarto={(q) => setModalQuartoForm({ aberto: true, quarto: q })}
               onAlterarStatusDireto={handleStatusDireto}
               onCancelarReserva={handleCancelarReserva}
@@ -298,7 +348,8 @@ export const MapaOperacionalPage: React.FC<MapaOperacionalPageProps> = ({
 
       {quartoReserva && (
         <ReservaModal
-          quarto={quartoReserva}
+          quarto={quartoReserva === 'global' ? null : quartoReserva}
+          quartosDisponiveis={quartos.filter((q) => q.ativo)}
           onFechar={() => setQuartoReserva(null)}
           onConfirmar={handleConfirmarReserva}
         />
@@ -326,6 +377,23 @@ export const MapaOperacionalPage: React.FC<MapaOperacionalPageProps> = ({
           quarto={quartoEstorno}
           onFechar={() => setQuartoEstorno(null)}
           onConfirmar={handleConfirmarEstorno}
+        />
+      )}
+
+      {quartoRenovacao && (
+        <RenovarDiariaModal
+          quarto={quartoRenovacao}
+          onFechar={() => setQuartoRenovacao(null)}
+          onConfirmar={handleConfirmarRenovacao}
+        />
+      )}
+
+      {quartoEdicaoHosp && (
+        <EditarHospedagemModal
+          quarto={quartoEdicaoHosp}
+          isGerente={isGerente}
+          onFechar={() => setQuartoEdicaoHosp(null)}
+          onConfirmar={handleConfirmarEdicaoHospedagem}
         />
       )}
 

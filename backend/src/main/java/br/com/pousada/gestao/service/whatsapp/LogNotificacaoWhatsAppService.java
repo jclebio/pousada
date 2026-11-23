@@ -3,7 +3,6 @@ package br.com.pousada.gestao.service.whatsapp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -13,33 +12,79 @@ public class LogNotificacaoWhatsAppService implements NotificacaoWhatsAppService
     private static final Logger log = LoggerFactory.getLogger(LogNotificacaoWhatsAppService.class);
 
     @Override
-    @Async("whatsappExecutor")
-    public void notificarCheckin(DadosCheckinWhatsApp dados) {
-        registrarNoConsole(FormatadorComprovanteWhatsApp.formatarCheckin(dados));
+    public String notificarCheckin(DadosCheckinWhatsApp dados) {
+        String msg = FormatadorComprovanteWhatsApp.formatarCheckin(dados);
+        registrarNoConsole(msg);
+        return msg;
     }
 
     @Override
-    @Async("whatsappExecutor")
-    public void notificarCheckoutPedidoLimpeza(DadosCheckoutWhatsApp dados) {
-        registrarNoConsole(FormatadorComprovanteWhatsApp.formatarCheckout(dados));
+    public String notificarCheckoutPedidoLimpeza(DadosCheckoutWhatsApp dados) {
+        String msg = FormatadorComprovanteWhatsApp.formatarCheckout(dados);
+        registrarNoConsole(msg);
+        return msg;
     }
 
     @Override
-    @Async("whatsappExecutor")
-    public void notificarQuartoDisponivel(String numeroQuarto, String responsavel) {
-        registrarNoConsole(FormatadorComprovanteWhatsApp.formatarQuartoDisponivel(numeroQuarto, responsavel));
+    public String notificarQuartoDisponivel(String numeroQuarto, String responsavel) {
+        String msg = FormatadorComprovanteWhatsApp.formatarQuartoDisponivel(numeroQuarto, responsavel);
+        registrarNoConsole(msg);
+        return msg;
     }
 
     @Override
-    @Async("whatsappExecutor")
-    public void notificarEntradaManutencao(String numeroQuarto, String motivoManutencao, String responsavel) {
-        registrarNoConsole(FormatadorComprovanteWhatsApp.formatarManutencao(numeroQuarto, motivoManutencao, responsavel));
+    public String notificarEntradaManutencao(String numeroQuarto, String motivoManutencao, String responsavel) {
+        String msg = FormatadorComprovanteWhatsApp.formatarManutencao(numeroQuarto, motivoManutencao, responsavel);
+        registrarNoConsole(msg);
+        return msg;
     }
 
     @Override
-    @Async("whatsappExecutor")
-    public void notificarEstornoCheckin(String numeroQuarto, String nomeHospede, String motivo, String gerente) {
-        registrarNoConsole(FormatadorComprovanteWhatsApp.formatarEstorno(numeroQuarto, nomeHospede, motivo, gerente));
+    public String notificarEstornoCheckin(String numeroQuarto, String nomeHospede, String motivo, String gerente) {
+        String msg = FormatadorComprovanteWhatsApp.formatarEstorno(numeroQuarto, nomeHospede, motivo, gerente);
+        registrarNoConsole(msg);
+        return msg;
+    }
+
+    @Override
+    public String notificarReserva(DadosReservaWhatsApp dados) {
+        String msg = FormatadorComprovanteWhatsApp.formatarReserva(
+                dados.numeroQuarto(),
+                dados.nomeHospede(),
+                dados.quantidadePessoas(),
+                dados.dataCheckin(),
+                dados.quantidadeDiarias(),
+                dados.dataCheckoutPrevista(),
+                dados.valorTotal(),
+                dados.valorAntecipado(),
+                dados.atendente()
+        );
+        registrarNoConsole(msg);
+        return msg;
+    }
+
+    @Override
+    public String notificarCancelamentoReserva(String numeroQuarto, String nomeHospede, String atendente) {
+        String msg = FormatadorComprovanteWhatsApp.formatarCancelamentoReserva(numeroQuarto, nomeHospede, atendente);
+        registrarNoConsole(msg);
+        return msg;
+    }
+
+    @Override
+    public String notificarRenovacao(DadosRenovacaoWhatsApp dados) {
+        String msg = FormatadorComprovanteWhatsApp.formatarRenovacao(
+                dados.numeroQuarto(),
+                dados.nomeHospede(),
+                dados.diariasAdicionais(),
+                dados.totalDiarias(),
+                dados.novaDataCheckout(),
+                dados.acrescimo(),
+                dados.novoTotal(),
+                dados.saldoRestante(),
+                dados.atendente()
+        );
+        registrarNoConsole(msg);
+        return msg;
     }
 
     private void registrarNoConsole(String mensagem) {

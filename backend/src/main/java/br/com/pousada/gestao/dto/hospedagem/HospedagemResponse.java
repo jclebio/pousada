@@ -23,6 +23,7 @@ public record HospedagemResponse(
         BigDecimal valorPagoCheckout,
         BigDecimal totalRecebido,
         BigDecimal saldoAReceber,
-        String registradoPor
+        String registradoPor,
+        String mensagemWhatsapp
 ) {
 }

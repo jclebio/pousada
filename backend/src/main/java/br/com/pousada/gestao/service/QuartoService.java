@@ -122,8 +122,9 @@ public class QuartoService {
                                 q.setObservacaoAtual(null);
                                 quartoRepository.save(q);
                             }
+                            // Item 1: exibe apenas reservas com dataCheckin estritamente futuras (a mais próxima)
                             proximaReserva = reservas.stream()
-                                    .filter(r -> r.getDataCheckin().isAfter(hoje) || r.getDataCheckoutPrevista().isAfter(hoje))
+                                    .filter(r -> r.getDataCheckin().isAfter(hoje))
                                     .min(Comparator.comparing(Hospedagem::getDataCheckin))
                                     .orElse(null);
                         }
@@ -243,11 +244,11 @@ public class QuartoService {
         registrarHistorico(salvo, null, usuarioLogado.getId(), "MUDANCA_STATUS", statusAnterior, novoStatus,
                 salvo.getObservacaoAtual());
 
-        dispararNotificacaoTransicao(statusAnterior, novoStatus, salvo.getNumero(), salvo.getObservacaoAtual(), usuarioLogado.getNome());
+        String msgWhatsApp = dispararNotificacaoTransicao(statusAnterior, novoStatus, salvo.getNumero(), salvo.getObservacaoAtual(), usuarioLogado.getNome());
 
         Hospedagem hospedagemAtual = buscarHospedagemExibicao(salvo);
         Hospedagem proximaReserva = buscarProximaReserva(salvo, hospedagemAtual != null ? hospedagemAtual.getId() : null);
-        return toMapaDTO(salvo, hospedagemAtual, proximaReserva);
+        return toMapaDTO(salvo, hospedagemAtual, proximaReserva, msgWhatsApp);
     }
 
     @Transactional
@@ -269,6 +270,10 @@ public class QuartoService {
     }
 
     public QuartoMapaDTO toMapaDTO(Quarto q, Hospedagem hAtual, Hospedagem hProx) {
+        return toMapaDTO(q, hAtual, hProx, null);
+    }
+
+    public QuartoMapaDTO toMapaDTO(Quarto q, Hospedagem hAtual, Hospedagem hProx, String msgWhatsApp) {
         return new QuartoMapaDTO(
                 q.getId(),
                 q.getNumero(),
@@ -281,7 +286,8 @@ public class QuartoService {
                 q.getDataCriacao(),
                 q.getAtualizadoEm(),
                 toResumo(hAtual),
-                toResumo(hProx)
+                toResumo(hProx),
+                msgWhatsApp
         );
     }
 
@@ -326,25 +332,24 @@ public class QuartoService {
         }
     }
 
-    private void dispararNotificacaoTransicao(StatusQuarto anterior,
-                                              StatusQuarto novo,
-                                              String numeroQuarto,
-                                              String observacao,
-                                              String responsavel) {
+    private String dispararNotificacaoTransicao(StatusQuarto anterior,
+                                                StatusQuarto novo,
+                                                String numeroQuarto,
+                                                String observacao,
+                                                String responsavel) {
         if (anterior == StatusQuarto.AGUARDANDO_LIMPEZA && novo == StatusQuarto.EM_LIMPEZA) {
-            return;
+            return null;
         }
 
-        executarAposCommit(() -> {
-            if (novo == StatusQuarto.EM_MANUTENCAO) {
-                notificacaoWhatsAppService.notificarEntradaManutencao(numeroQuarto, observacao, responsavel);
-            } else if (novo == StatusQuarto.DISPONIVEL
-                    && (anterior == StatusQuarto.AGUARDANDO_LIMPEZA
-                    || anterior == StatusQuarto.EM_LIMPEZA
-                    || anterior == StatusQuarto.EM_MANUTENCAO)) {
-                notificacaoWhatsAppService.notificarQuartoDisponivel(numeroQuarto, responsavel);
-            }
-        });
+        if (novo == StatusQuarto.EM_MANUTENCAO) {
+            return notificacaoWhatsAppService.notificarEntradaManutencao(numeroQuarto, observacao, responsavel);
+        } else if (novo == StatusQuarto.DISPONIVEL
+                && (anterior == StatusQuarto.AGUARDANDO_LIMPEZA
+                || anterior == StatusQuarto.EM_LIMPEZA
+                || anterior == StatusQuarto.EM_MANUTENCAO)) {
+            return notificacaoWhatsAppService.notificarQuartoDisponivel(numeroQuarto, responsavel);
+        }
+        return null;
     }
 
     private Hospedagem buscarHospedagemExibicao(Quarto quarto) {
@@ -369,9 +374,10 @@ public class QuartoService {
         List<Hospedagem> reservas = hospedagemRepository.buscarPorQuartoEStatuses(
                 quarto.getId(), Set.of(StatusHospedagem.RESERVADA)
         );
+        // Item 1: considera apenas reservas com dataCheckin estritamente futura
         return reservas.stream()
                 .filter(r -> (idHospedagemAtual == null || !r.getId().equals(idHospedagemAtual))
-                        && r.getDataCheckoutPrevista().isAfter(hoje))
+                        && r.getDataCheckin().isAfter(hoje))
                 .min(Comparator.comparing(Hospedagem::getDataCheckin))
                 .orElse(null);
     }

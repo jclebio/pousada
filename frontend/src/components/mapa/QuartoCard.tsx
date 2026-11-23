@@ -2,6 +2,7 @@ import React from 'react';
 import {
   AlertTriangle,
   CalendarClock,
+  CalendarPlus,
   CheckCircle2,
   LogIn,
   LogOut,
@@ -27,6 +28,8 @@ interface QuartoCardProps {
   onAbrirEdicaoQuarto: (quarto: QuartoMapa) => void;
   onAlterarStatusDireto: (quarto: QuartoMapa, novoStatus: StatusQuarto) => void;
   onCancelarReserva?: (reservaId: number) => void;
+  onAbrirRenovacao?: (quarto: QuartoMapa) => void;
+  onAbrirEdicaoHospedagem?: (quarto: QuartoMapa) => void;
 }
 
 const ESTILOS_STATUS: Record<
@@ -94,16 +97,17 @@ export const QuartoCard: React.FC<QuartoCardProps> = ({
   onAbrirEstorno,
   onAbrirEdicaoQuarto,
   onAlterarStatusDireto,
-  onCancelarReserva
+  onCancelarReserva,
+  onAbrirRenovacao,
+  onAbrirEdicaoHospedagem
 }) => {
   const estilo = ESTILOS_STATUS[quarto.status];
   const hosp = quarto.hospedagemAtual;
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl border-2 shadow-sm transition ${
-        quarto.ativo ? `${estilo.cardBg} ${estilo.border}` : 'bg-slate-100 border-dashed border-slate-300 opacity-75'
-      }`}
+      className={`relative overflow-hidden rounded-2xl border-2 shadow-sm transition ${quarto.ativo ? `${estilo.cardBg} ${estilo.border}` : 'bg-slate-100 border-dashed border-slate-300 opacity-75'
+        }`}
     >
       <div className={`h-1.5 w-full ${quarto.ativo ? estilo.barraTopo : 'bg-slate-400'}`} />
 
@@ -150,10 +154,22 @@ export const QuartoCard: React.FC<QuartoCardProps> = ({
           <div className="rounded-xl bg-white/90 p-3 border border-slate-200/80 space-y-1.5">
             <div className="flex items-center justify-between gap-2">
               <span className="font-bold text-sm text-slate-900 truncate">{hosp.nomeHospede}</span>
-              <span className="flex items-center gap-1 text-xs font-medium text-slate-600 shrink-0">
-                <Users className="h-3.5 w-3.5" />
-                {hosp.quantidadePessoas}
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="flex items-center gap-1 text-xs font-medium text-slate-600">
+                  <Users className="h-3.5 w-3.5" />
+                  {hosp.quantidadePessoas}
+                </span>
+                {onAbrirEdicaoHospedagem && (
+                  <button
+                    type="button"
+                    onClick={() => onAbrirEdicaoHospedagem(quarto)}
+                    title="Editar dados da hospedagem"
+                    className="flex h-6 w-6 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:text-slate-900 active:scale-95"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
               <span className="flex items-center gap-1">
@@ -220,11 +236,10 @@ export const QuartoCard: React.FC<QuartoCardProps> = ({
         {/* Observação Atual do Quarto */}
         {quarto.observacaoAtual && (
           <div
-            className={`flex items-start gap-2 rounded-xl p-2.5 text-xs ${
-              quarto.status === 'EM_MANUTENCAO'
+            className={`flex items-start gap-2 rounded-xl p-2.5 text-xs ${quarto.status === 'EM_MANUTENCAO'
                 ? 'bg-slate-800 text-slate-100 font-medium'
                 : 'bg-white/80 text-slate-700 border border-slate-200'
-            }`}
+              }`}
           >
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-500" />
             <span className="break-words">{quarto.observacaoAtual}</span>
@@ -301,6 +316,17 @@ export const QuartoCard: React.FC<QuartoCardProps> = ({
                   <LogOut className="h-4 w-4" />
                   <span>Check-out</span>
                 </button>
+                {onAbrirRenovacao && (
+                  <button
+                    type="button"
+                    onClick={() => onAbrirRenovacao(quarto)}
+                    className="flex min-h-[44px] items-center justify-center gap-1 rounded-xl border border-amber-300 bg-white px-3 py-2.5 text-xs font-bold text-amber-700 active:scale-[0.98] hover:bg-amber-50"
+                    title="Renovar / estender diárias"
+                  >
+                    <CalendarPlus className="h-4 w-4" />
+                    <span>Renovar</span>
+                  </button>
+                )}
                 {isGerente && hosp && (
                   <button
                     type="button"

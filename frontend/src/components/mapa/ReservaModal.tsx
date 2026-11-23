@@ -9,18 +9,39 @@ import {
 } from '../../utils/formatters';
 
 interface ReservaModalProps {
-  quarto: QuartoMapa;
+  /** Quando fornecido, pré-seleciona o quarto (vindo do card). Quando null/undefined, o usuário escolhe. */
+  quarto?: QuartoMapa | null;
+  /** Lista de todos os quartos ativos — usada para o select quando quarto não está pré-selecionado. */
+  quartosDisponiveis?: QuartoMapa[];
   onFechar: () => void;
   onConfirmar: (payload: ReservaPayload) => Promise<void>;
 }
 
-export const ReservaModal: React.FC<ReservaModalProps> = ({ quarto, onFechar, onConfirmar }) => {
+export const ReservaModal: React.FC<ReservaModalProps> = ({
+  quarto: quartoProp,
+  quartosDisponiveis = [],
+  onFechar,
+  onConfirmar
+}) => {
+  // Quando aberto globalmente (sem quarto pré-selecionado), o usuário escolhe via select
+  const [quartoIdSelecionado, setQuartoIdSelecionado] = useState<number | ''>(
+    quartoProp ? quartoProp.id : ''
+  );
+
+  const quartoEfetivo = useMemo(() => {
+    if (quartoProp) return quartoProp;
+    if (quartoIdSelecionado === '') return null;
+    return quartosDisponiveis.find((q) => q.id === quartoIdSelecionado) ?? null;
+  }, [quartoProp, quartoIdSelecionado, quartosDisponiveis]);
+
   const [nomeHospede, setNomeHospede] = useState('');
   const [quantidadePessoas, setQuantidadePessoas] = useState(2);
   const [dataCheckin, setDataCheckin] = useState(hojeISO());
   const [quantidadeDiarias, setQuantidadeDiarias] = useState(2);
   const [valorTotalStr, setValorTotalStr] = useState(
-    quarto.diariaPadrao != null ? String((quarto.diariaPadrao * 2).toFixed(2)) : ''
+    quartoEfetivo?.diariaPadrao != null
+      ? String((quartoEfetivo.diariaPadrao * 2).toFixed(2))
+      : ''
   );
   const [valorAntecipadoStr, setValorAntecipadoStr] = useState('0');
   const [observacaoQuarto, setObservacaoQuarto] = useState('');
@@ -35,18 +56,34 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({ quarto, onFechar, on
   const atualizarDiarias = (nova: number) => {
     const d = Math.max(1, nova);
     setQuantidadeDiarias(d);
-    if (quarto.diariaPadrao != null) {
-      setValorTotalStr((quarto.diariaPadrao * d).toFixed(2));
+    const diaria = quartoEfetivo?.diariaPadrao ?? null;
+    if (diaria != null) {
+      setValorTotalStr((diaria * d).toFixed(2));
+    }
+  };
+
+  // Quando o usuário troca o quarto no select, recalcula o valor sugerido
+  const handleTrocarQuarto = (id: number | '') => {
+    setQuartoIdSelecionado(id);
+    if (id !== '') {
+      const q = quartosDisponiveis.find((x) => x.id === id);
+      if (q?.diariaPadrao != null) {
+        setValorTotalStr((q.diariaPadrao * quantidadeDiarias).toFixed(2));
+      }
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErro(null);
+    if (!quartoEfetivo) {
+      setErro('Selecione um quarto para a reserva.');
+      return;
+    }
     try {
       setSalvando(true);
       await onConfirmar({
-        quartoId: quarto.id,
+        quartoId: quartoEfetivo.id,
         nomeHospede: nomeHospede.trim(),
         quantidadePessoas,
         dataCheckin,
@@ -62,15 +99,17 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({ quarto, onFechar, on
     }
   };
 
+  const tituloQuarto = quartoEfetivo ? `Quarto ${quartoEfetivo.numero}` : 'Escolha o Quarto';
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/60 p-0 sm:p-4">
       <div className="w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-2xl bg-white p-5 shadow-2xl">
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div>
             <h2 className="text-lg font-extrabold text-slate-900">
-              Reservar • Quarto {quarto.numero}
+              Reservar • {tituloQuarto}
             </h2>
-            <p className="text-xs text-slate-500">Bloqueia o quarto para chegada agendada</p>
+            <p className="text-xs text-slate-500">Agenda uma chegada futura</p>
           </div>
           <button
             type="button"
@@ -85,6 +124,32 @@ export const ReservaModal: React.FC<ReservaModalProps> = ({ quarto, onFechar, on
           {erro && (
             <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-xs font-semibold text-rose-700">
               {erro}
+            </div>
+          )}
+
+          {/* Select de quarto — só aparece quando não há quarto pré-selecionado */}
+          {!quartoProp && (
+            <div>
+              <label className="block text-xs font-bold uppercase text-slate-600 mb-1">
+                Quarto *
+              </label>
+              <select
+                required
+                value={quartoIdSelecionado}
+                onChange={(e) =>
+                  handleTrocarQuarto(e.target.value === '' ? '' : Number(e.target.value))
+                }
+                className="w-full rounded-xl border border-slate-300 px-3.5 py-3 text-base bg-white"
+              >
+                <option value="">Selecione um quarto...</option>
+                {quartosDisponiveis.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    Quarto {q.numero}
+                    {q.descricao ? ` — ${q.descricao}` : ''}
+                    {q.diariaPadrao != null ? ` (R$ ${q.diariaPadrao}/noite)` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
 

@@ -30,13 +30,45 @@ public interface NotificacaoWhatsAppService {
     ) {
     }
 
-    void notificarCheckin(DadosCheckinWhatsApp dados);
+    record DadosReservaWhatsApp(
+            String numeroQuarto,
+            String nomeHospede,
+            int quantidadePessoas,
+            LocalDate dataCheckin,
+            int quantidadeDiarias,
+            LocalDate dataCheckoutPrevista,
+            BigDecimal valorTotal,
+            BigDecimal valorAntecipado,
+            String atendente
+    ) {
+    }
 
-    void notificarCheckoutPedidoLimpeza(DadosCheckoutWhatsApp dados);
+    record DadosRenovacaoWhatsApp(
+            String numeroQuarto,
+            String nomeHospede,
+            int diariasAdicionais,
+            int totalDiarias,
+            LocalDate novaDataCheckout,
+            BigDecimal acrescimo,
+            BigDecimal novoTotal,
+            BigDecimal saldoRestante,
+            String atendente
+    ) {
+    }
 
-    void notificarQuartoDisponivel(String numeroQuarto, String responsavel);
+    String notificarCheckin(DadosCheckinWhatsApp dados);
 
-    void notificarEntradaManutencao(String numeroQuarto, String motivoManutencao, String responsavel);
+    String notificarCheckoutPedidoLimpeza(DadosCheckoutWhatsApp dados);
 
-    void notificarEstornoCheckin(String numeroQuarto, String nomeHospede, String motivo, String gerente);
+    String notificarQuartoDisponivel(String numeroQuarto, String responsavel);
+
+    String notificarEntradaManutencao(String numeroQuarto, String motivoManutencao, String responsavel);
+
+    String notificarEstornoCheckin(String numeroQuarto, String nomeHospede, String motivo, String gerente);
+
+    String notificarReserva(DadosReservaWhatsApp dados);
+
+    String notificarCancelamentoReserva(String numeroQuarto, String nomeHospede, String atendente);
+
+    String notificarRenovacao(DadosRenovacaoWhatsApp dados);
 }

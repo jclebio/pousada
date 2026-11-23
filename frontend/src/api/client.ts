@@ -1,9 +1,13 @@
 import type {
   CheckinPayload,
+  EditarHospedagemPayload,
+  HistoricoPage,
+  HospedagemResponse,
   LoginResponse,
   QuartoMapa,
   QuartoRequest,
   RelatorioVacancia,
+  RenovarDiariaPayload,
   ReservaItem,
   ReservaPayload,
   StatusQuarto,
@@ -109,34 +113,101 @@ export const api = {
     }),
 
   realizarCheckin: (payload: CheckinPayload) =>
-    requisitar('/hospedagens/checkin', {
+    requisitar<HospedagemResponse>('/hospedagens/checkin', {
       method: 'POST',
       body: JSON.stringify(payload)
     }),
 
   registrarReserva: (payload: ReservaPayload) =>
-    requisitar('/hospedagens/reserva', {
+    requisitar<HospedagemResponse>('/hospedagens/reserva', {
       method: 'POST',
       body: JSON.stringify(payload)
     }),
 
   listarReservas: () => requisitar<ReservaItem[]>('/hospedagens/reservas'),
 
+  listarHistorico: (params: {
+    status?: string[];
+    quartoId?: number;
+    nomeHospede?: string;
+    dataInicio?: string;
+    dataFim?: string;
+    page?: number;
+    size?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params.status?.length) params.status.forEach(s => qs.append('status', s));
+    if (params.quartoId != null) qs.set('quartoId', String(params.quartoId));
+    if (params.nomeHospede) qs.set('nomeHospede', params.nomeHospede);
+    if (params.dataInicio) qs.set('dataInicio', params.dataInicio);
+    if (params.dataFim) qs.set('dataFim', params.dataFim);
+    qs.set('page', String(params.page ?? 0));
+    qs.set('size', String(params.size ?? 20));
+    return requisitar<HistoricoPage>(`/hospedagens?${qs.toString()}`);
+  },
+
+  exportarHistoricoCsv: async (params: {
+    status?: string[];
+    quartoId?: number;
+    nomeHospede?: string;
+    dataInicio?: string;
+    dataFim?: string;
+  }): Promise<void> => {
+    const qs = new URLSearchParams();
+    if (params.status?.length) params.status.forEach(s => qs.append('status', s));
+    if (params.quartoId != null) qs.set('quartoId', String(params.quartoId));
+    if (params.nomeHospede) qs.set('nomeHospede', params.nomeHospede);
+    if (params.dataInicio) qs.set('dataInicio', params.dataInicio);
+    if (params.dataFim) qs.set('dataFim', params.dataFim);
+
+    const token = obterTokenSalvo();
+    const headers = new Headers();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+
+    const res = await fetch(`${API_BASE}/hospedagens/exportar/csv?${qs.toString()}`, {
+      headers
+    });
+    if (!res.ok) {
+      throw new Error(`Erro ${res.status} ao exportar arquivo.`);
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `historico-hospedagens-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  },
+
   cancelarReserva: (hospedagemId: number) =>
-    requisitar(`/hospedagens/${hospedagemId}/cancelar`, {
+    requisitar<HospedagemResponse>(`/hospedagens/${hospedagemId}/cancelar`, {
       method: 'POST'
     }),
 
   realizarCheckout: (quartoId: number, valorPagoCheckout?: number, observacaoLimpeza?: string) =>
-    requisitar(`/quartos/${quartoId}/checkout`, {
+    requisitar<HospedagemResponse>(`/quartos/${quartoId}/checkout`, {
       method: 'POST',
       body: JSON.stringify({ valorPagoCheckout, observacaoLimpeza })
     }),
 
   estornarHospedagem: (hospedagemId: number, motivo: string) =>
-    requisitar(`/hospedagens/${hospedagemId}/estornar`, {
+    requisitar<HospedagemResponse>(`/hospedagens/${hospedagemId}/estornar`, {
       method: 'POST',
       body: JSON.stringify({ motivo })
+    }),
+
+  renovarDiarias: (hospedagemId: number, payload: RenovarDiariaPayload) =>
+    requisitar<HospedagemResponse>(`/hospedagens/${hospedagemId}/renovar`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }),
+
+  editarHospedagem: (hospedagemId: number, payload: EditarHospedagemPayload) =>
+    requisitar<HospedagemResponse>(`/hospedagens/${hospedagemId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload)
     }),
 
   relatorioVacancia: (dataInicio: string, dataFim: string) =>

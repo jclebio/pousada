@@ -4,12 +4,15 @@ import br.com.pousada.gestao.domain.entity.HistoricoOperacao;
 import br.com.pousada.gestao.domain.entity.Hospedagem;
 import br.com.pousada.gestao.domain.entity.Quarto;
 import br.com.pousada.gestao.domain.entity.Usuario;
+import br.com.pousada.gestao.domain.enums.PerfilUsuario;
 import br.com.pousada.gestao.domain.enums.StatusHospedagem;
 import br.com.pousada.gestao.domain.enums.StatusQuarto;
 import br.com.pousada.gestao.dto.hospedagem.CheckinRequest;
 import br.com.pousada.gestao.dto.hospedagem.CheckoutRequest;
+import br.com.pousada.gestao.dto.hospedagem.EditarHospedagemRequest;
 import br.com.pousada.gestao.dto.hospedagem.EstornoRequest;
 import br.com.pousada.gestao.dto.hospedagem.HospedagemResponse;
+import br.com.pousada.gestao.dto.hospedagem.RenovarHospedagemRequest;
 import br.com.pousada.gestao.dto.hospedagem.ReservaRequest;
 import br.com.pousada.gestao.exception.RecursoNaoEncontradoException;
 import br.com.pousada.gestao.exception.RegraNegocioException;
@@ -18,19 +21,29 @@ import br.com.pousada.gestao.repository.HospedagemRepository;
 import br.com.pousada.gestao.repository.QuartoRepository;
 import br.com.pousada.gestao.repository.UsuarioRepository;
 import br.com.pousada.gestao.security.UsuarioPrincipal;
+import br.com.pousada.gestao.service.whatsapp.FormatadorComprovanteWhatsApp;
 import br.com.pousada.gestao.service.whatsapp.NotificacaoWhatsAppService;
+import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Predicate;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
-
 @Service
 public class HospedagemService {
 
@@ -147,9 +160,9 @@ public class HospedagemService {
                 salva.getSaldoAReceber(),
                 usuario.getNome()
         );
-        executarAposCommit(() -> notificacaoWhatsAppService.notificarCheckin(dadosWhatsApp));
+        String msgWhatsApp = notificacaoWhatsAppService.notificarCheckin(dadosWhatsApp);
 
-        return toResponse(salva);
+        return toResponse(salva, msgWhatsApp);
     }
 
     @Transactional
@@ -169,9 +182,12 @@ public class HospedagemService {
         validarConflitoDatas(quarto, dataCheckin, dataCheckoutPrevista, null);
 
         LocalDate hoje = LocalDate.now();
-        // Se a reserva for para HOJE e o quarto não estiver DISPONÍVEL, bloqueia
-        if (!dataCheckin.isAfter(hoje) && quarto.getStatus() != StatusQuarto.DISPONIVEL) {
-            throw new RegraNegocioException("Quarto " + quarto.getNumero() + " precisa estar DISPONÍVEL para reserva na data de hoje.");
+        // Item 2: o status físico do quarto só é relevante para reservas de HOJE (não futuras).
+        // Reservas futuras são permitidas em qualquer status (a validação de conflito de datas já cobre sobreposições).
+        if (!dataCheckin.isAfter(hoje) && quarto.getStatus() != StatusQuarto.DISPONIVEL
+                && quarto.getStatus() != StatusQuarto.RESERVADO) {
+            throw new RegraNegocioException("Quarto " + quarto.getNumero()
+                    + " não está disponível para reserva na data de hoje (status atual: " + quarto.getStatus() + ").");
         }
 
         Usuario usuario = usuarioRepository.findById(usuarioLogado.getId())
@@ -216,7 +232,20 @@ public class HospedagemService {
         registrarHistorico(quarto, salva, usuario, "RESERVA", statusAnterior, quarto.getStatus(),
                 "Reserva registrada para " + salva.getNomeHospede() + " (" + dataCheckin + " a " + dataCheckoutPrevista + ").");
 
-        return toResponse(salva);
+        var dadosReserva = new NotificacaoWhatsAppService.DadosReservaWhatsApp(
+                quarto.getNumero(),
+                salva.getNomeHospede(),
+                salva.getQuantidadePessoas(),
+                dataCheckin,
+                diarias,
+                dataCheckoutPrevista,
+                salva.getValorTotal(),
+                valorAntecipado,
+                usuario.getNome()
+        );
+        String msgReserva = notificacaoWhatsAppService.notificarReserva(dadosReserva);
+
+        return toResponse(salva, msgReserva);
     }
 
     @Transactional(readOnly = true)
@@ -225,6 +254,109 @@ public class HospedagemService {
                 .stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Page<HospedagemResponse> listarHistorico(
+            Set<StatusHospedagem> statuses,
+            Long quartoId,
+            String nomeHospede,
+            LocalDate dataInicio,
+            LocalDate dataFim,
+            int page,
+            int size) {
+        int pageSize = Math.min(Math.max(size, 1), 100);
+        int pageIndex = Math.max(page, 0);
+        Pageable pageable = PageRequest.of(pageIndex, pageSize, Sort.by(Sort.Order.desc("dataCheckin"), Sort.Order.desc("id")));
+
+        Specification<Hospedagem> spec = criarSpecificationHistorico(statuses, quartoId, nomeHospede, dataInicio, dataFim);
+        return hospedagemRepository.findAll(spec, pageable).map(this::toResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] exportarCsv(
+            Set<StatusHospedagem> statuses,
+            Long quartoId,
+            String nomeHospede,
+            LocalDate dataInicio,
+            LocalDate dataFim) {
+        Specification<Hospedagem> spec = criarSpecificationHistorico(statuses, quartoId, nomeHospede, dataInicio, dataFim);
+        List<Hospedagem> lista = hospedagemRepository.findAll(spec, Sort.by(Sort.Order.desc("dataCheckin"), Sort.Order.desc("id")));
+
+        DateTimeFormatter fmtData = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        DateTimeFormatter fmtHora = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+
+        StringBuilder sb = new StringBuilder();
+        // BOM UTF-8 para garantir acentuação correta no Excel
+        sb.append("\uFEFF");
+        sb.append("Quarto;Hóspede;Status;Pessoas;Check-in;Saída Prevista;Check-out Real;Diárias;Valor Total;Valor Antecipado;Valor Check-in;Valor Check-out;Total Recebido;Saldo a Receber;Registrado Por\n");
+
+        for (Hospedagem h : lista) {
+            String hospedeFormatado = h.getNomeHospede() != null ? "\"" + h.getNomeHospede().replace("\"", "\"\"") + "\"" : "";
+            String checkoutReal = h.getDataCheckoutReal() != null ? h.getDataCheckoutReal().format(fmtHora) : "-";
+            String registradoPor = h.getUsuarioRegistro() != null ? "\"" + h.getUsuarioRegistro().getNome().replace("\"", "\"\"") + "\"" : "-";
+
+            sb.append(h.getQuarto().getNumero()).append(";")
+                    .append(hospedeFormatado).append(";")
+                    .append(h.getStatusHospedagem()).append(";")
+                    .append(h.getQuantidadePessoas()).append(";")
+                    .append(h.getDataCheckin().format(fmtData)).append(";")
+                    .append(h.getDataCheckoutPrevista().format(fmtData)).append(";")
+                    .append(checkoutReal).append(";")
+                    .append(h.getQuantidadeDiarias()).append(";")
+                    .append(formatarDecimalCsv(h.getValorTotal())).append(";")
+                    .append(formatarDecimalCsv(h.getValorAntecipado())).append(";")
+                    .append(formatarDecimalCsv(h.getValorPagoCheckin())).append(";")
+                    .append(formatarDecimalCsv(h.getValorPagoCheckout())).append(";")
+                    .append(formatarDecimalCsv(h.getTotalRecebido())).append(";")
+                    .append(formatarDecimalCsv(h.getSaldoAReceber())).append(";")
+                    .append(registradoPor).append("\n");
+        }
+
+        return sb.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    private String formatarDecimalCsv(BigDecimal valor) {
+        if (valor == null) return "0,00";
+        return String.format(Locale.of("pt", "BR"), "%.2f", valor);
+    }
+
+    private Specification<Hospedagem> criarSpecificationHistorico(
+            Set<StatusHospedagem> statuses,
+            Long quartoId,
+            String nomeHospede,
+            LocalDate dataInicio,
+            LocalDate dataFim) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (Long.class != query.getResultType() && long.class != query.getResultType()) {
+                root.fetch("quarto", JoinType.LEFT);
+                root.fetch("usuarioRegistro", JoinType.LEFT);
+            }
+
+            if (statuses != null && !statuses.isEmpty()) {
+                predicates.add(root.get("statusHospedagem").in(statuses));
+            }
+
+            if (quartoId != null) {
+                predicates.add(cb.equal(root.get("quarto").get("id"), quartoId));
+            }
+
+            if (nomeHospede != null && !nomeHospede.isBlank()) {
+                predicates.add(cb.like(cb.lower(root.get("nomeHospede")), "%" + nomeHospede.trim().toLowerCase() + "%"));
+            }
+
+            if (dataInicio != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("dataCheckin"), dataInicio));
+            }
+
+            if (dataFim != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("dataCheckin"), dataFim));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
     }
 
     @Transactional
@@ -264,7 +396,13 @@ public class HospedagemService {
         registrarHistorico(quarto, salva, usuario, "CANCELAMENTO_RESERVA", quarto.getStatus(), quarto.getStatus(),
                 "Reserva de " + salva.getNomeHospede() + " cancelada.");
 
-        return toResponse(salva);
+        String msgCancelamento = notificacaoWhatsAppService.notificarCancelamentoReserva(
+                quarto.getNumero(),
+                salva.getNomeHospede(),
+                usuario.getNome()
+        );
+
+        return toResponse(salva, msgCancelamento);
     }
 
     @Transactional
@@ -314,9 +452,9 @@ public class HospedagemService {
                 obsLimpeza,
                 usuario.getNome()
         );
-        executarAposCommit(() -> notificacaoWhatsAppService.notificarCheckoutPedidoLimpeza(dadosCheckout));
+        String msgCheckout = notificacaoWhatsAppService.notificarCheckoutPedidoLimpeza(dadosCheckout);
 
-        return toResponse(salva);
+        return toResponse(salva, msgCheckout);
     }
 
     @Transactional
@@ -350,7 +488,114 @@ public class HospedagemService {
         String numeroQuarto = quarto.getNumero();
         String nomeHospede = salva.getNomeHospede();
         String nomeGerente = gerente.getNome();
-        executarAposCommit(() -> notificacaoWhatsAppService.notificarEstornoCheckin(numeroQuarto, nomeHospede, motivo, nomeGerente));
+        String msgEstorno = notificacaoWhatsAppService.notificarEstornoCheckin(numeroQuarto, nomeHospede, motivo, nomeGerente);
+
+        return toResponse(salva, msgEstorno);
+    }
+
+    @Transactional
+    public HospedagemResponse renovarDiarias(Long hospedagemId, RenovarHospedagemRequest request, UsuarioPrincipal usuarioLogado) {
+        Hospedagem hospedagem = hospedagemRepository.findById(hospedagemId)
+                .orElseThrow(() -> new RecursoNaoEncontradoException("Hospedagem não encontrada."));
+
+        if (hospedagem.getStatusHospedagem() != StatusHospedagem.ATIVA) {
+            throw new RegraNegocioException("Apenas hospedagens com status ATIVA podem ser renovadas.");
+        }
+
+        Quarto quarto = hospedagem.getQuarto();
+        Usuario usuario = usuarioRepository.findById(usuarioLogado.getId())
+                .orElseThrow(() -> new RecursoNaoEncontradoException("Usuário não encontrado."));
+
+        int adicionais = request.diariasAdicionais();
+        LocalDate novaDataCheckoutPrevista = hospedagem.getDataCheckoutPrevista().plusDays(adicionais);
+
+        // Valida se a prorrogação invade alguma reserva futura agendada para o quarto
+        validarConflitoDatas(quarto, hospedagem.getDataCheckin(), novaDataCheckoutPrevista, hospedagem.getId());
+
+        int novoTotalDiarias = hospedagem.getQuantidadeDiarias() + adicionais;
+        BigDecimal valorAdicional = request.valorAdicional() != null ? request.valorAdicional() : BigDecimal.ZERO;
+        BigDecimal novoValorTotal = hospedagem.getValorTotal().add(valorAdicional);
+
+        BigDecimal valorPagoAgora = (request.valorPagoAgora() != null && request.valorPagoAgora().compareTo(BigDecimal.ZERO) > 0)
+                ? request.valorPagoAgora()
+                : BigDecimal.ZERO;
+
+        hospedagem.setQuantidadeDiarias(novoTotalDiarias);
+        hospedagem.setDataCheckoutPrevista(novaDataCheckoutPrevista);
+        hospedagem.setValorTotal(novoValorTotal);
+        if (valorPagoAgora.compareTo(BigDecimal.ZERO) > 0) {
+            hospedagem.setValorPagoCheckin(hospedagem.getValorPagoCheckin().add(valorPagoAgora));
+        }
+
+        Hospedagem salva = hospedagemRepository.save(hospedagem);
+
+        String obsDetalhe = (request.observacao() != null && !request.observacao().isBlank())
+                ? " Obs: " + request.observacao().trim()
+                : "";
+
+        registrarHistorico(quarto, salva, usuario, "RENOVACAO_DIARIA", quarto.getStatus(), quarto.getStatus(),
+                String.format("Renovação de +%d diária(s). Nova saída: %s. Acréscimo: R$ %.2f (Pago agora: R$ %.2f).%s",
+                        adicionais, novaDataCheckoutPrevista, valorAdicional, valorPagoAgora, obsDetalhe));
+
+        var dadosRenovacao = new NotificacaoWhatsAppService.DadosRenovacaoWhatsApp(
+                quarto.getNumero(),
+                salva.getNomeHospede(),
+                adicionais,
+                novoTotalDiarias,
+                novaDataCheckoutPrevista,
+                valorAdicional,
+                novoValorTotal,
+                salva.getSaldoAReceber(),
+                usuario.getNome()
+        );
+        String msgWhatsApp = notificacaoWhatsAppService.notificarRenovacao(dadosRenovacao);
+
+        return toResponse(salva, msgWhatsApp);
+    }
+
+    @Transactional
+    public HospedagemResponse editarHospedagem(Long hospedagemId, EditarHospedagemRequest request, UsuarioPrincipal usuarioLogado) {
+        Hospedagem hospedagem = hospedagemRepository.findById(hospedagemId)
+                .orElseThrow(() -> new RecursoNaoEncontradoException("Hospedagem não encontrada."));
+
+        if (hospedagem.getStatusHospedagem() == StatusHospedagem.ESTORNADA || hospedagem.getStatusHospedagem() == StatusHospedagem.CANCELADA) {
+            throw new RegraNegocioException("Hospedagens canceladas ou estornadas não permitem alteração.");
+        }
+
+        if (hospedagem.getStatusHospedagem() == StatusHospedagem.FINALIZADA && usuarioLogado.getPerfil() != PerfilUsuario.GERENTE) {
+            throw new RegraNegocioException("Apenas usuários com perfil GERENTE podem editar hospedagens já finalizadas.");
+        }
+
+        Quarto quarto = hospedagem.getQuarto();
+        if (request.quantidadePessoas() > quarto.getCapacidadeMaxima()) {
+            throw new RegraNegocioException(String.format("Quantidade de pessoas (%d) excede a capacidade máxima do quarto %s (%d).",
+                    request.quantidadePessoas(), quarto.getNumero(), quarto.getCapacidadeMaxima()));
+        }
+
+        Usuario usuario = usuarioRepository.findById(usuarioLogado.getId())
+                .orElseThrow(() -> new RecursoNaoEncontradoException("Usuário não encontrado."));
+
+        String nomeAnterior = hospedagem.getNomeHospede();
+        BigDecimal totalAnterior = hospedagem.getValorTotal();
+        BigDecimal pagoCheckinAnterior = hospedagem.getValorPagoCheckin();
+
+        hospedagem.setNomeHospede(request.nomeHospede().trim());
+        hospedagem.setQuantidadePessoas(request.quantidadePessoas());
+        hospedagem.setValorTotal(request.valorTotal());
+        if (request.valorPagoCheckin() != null) {
+            hospedagem.setValorPagoCheckin(request.valorPagoCheckin());
+        }
+
+        Hospedagem salva = hospedagemRepository.save(hospedagem);
+
+        String motivo = request.motivo().trim();
+        String detalhesAuditoria = String.format("Edição cadastral/financeira por %s (%s). Motivo: %s. Mudanças: [Hóspede: '%s' -> '%s', Total: R$ %.2f -> R$ %.2f, Pago Checkin: R$ %.2f -> R$ %.2f]",
+                usuario.getNome(), usuario.getPerfil(), motivo,
+                nomeAnterior, salva.getNomeHospede(),
+                totalAnterior, salva.getValorTotal(),
+                pagoCheckinAnterior, salva.getValorPagoCheckin());
+
+        registrarHistorico(quarto, salva, usuario, "EDICAO_HOSPEDAGEM", quarto.getStatus(), quarto.getStatus(), detalhesAuditoria);
 
         return toResponse(salva);
     }
@@ -386,6 +631,10 @@ public class HospedagemService {
     }
 
     private HospedagemResponse toResponse(Hospedagem h) {
+        return toResponse(h, null);
+    }
+
+    private HospedagemResponse toResponse(Hospedagem h, String mensagemWhatsapp) {
         return new HospedagemResponse(
                 h.getId(),
                 h.getQuarto().getId(),
@@ -403,7 +652,8 @@ public class HospedagemService {
                 h.getValorPagoCheckout(),
                 h.getTotalRecebido(),
                 h.getSaldoAReceber(),
-                h.getUsuarioRegistro() != null ? h.getUsuarioRegistro().getNome() : null
+                h.getUsuarioRegistro() != null ? h.getUsuarioRegistro().getNome() : null,
+                mensagemWhatsapp
         );
     }
 

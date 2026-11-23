@@ -1,13 +1,20 @@
 import React from 'react';
-import { Hotel, LogOut, RefreshCw, ShieldCheck, User } from 'lucide-react';
+import { Hotel, LogOut, MessageSquare, RefreshCw, ShieldCheck, User } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 interface TopBarProps {
   onRefresh?: () => void;
   atualizando?: boolean;
+  temMensagemWhatsapp?: boolean;
+  onAbrirMensagemWhatsapp?: () => void;
 }
 
-export const TopBar: React.FC<TopBarProps> = ({ onRefresh, atualizando }) => {
+export const TopBar: React.FC<TopBarProps> = ({
+  onRefresh,
+  atualizando,
+  temMensagemWhatsapp,
+  onAbrirMensagemWhatsapp
+}) => {
   const { usuario, isGerente, sair } = useAuth();
 
   return (
@@ -40,6 +47,22 @@ export const TopBar: React.FC<TopBarProps> = ({ onRefresh, atualizando }) => {
         </div>
 
         <div className="flex items-center gap-2">
+          {temMensagemWhatsapp && onAbrirMensagemWhatsapp && (
+            <button
+              type="button"
+              onClick={onAbrirMensagemWhatsapp}
+              aria-label="Reabrir mensagem do WhatsApp"
+              title="Reabrir mensagem do WhatsApp da equipe"
+              className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-900/60 text-emerald-400 border border-emerald-500/40 active:scale-95 hover:bg-emerald-800/80 transition"
+            >
+              <MessageSquare className="h-4 w-4" />
+              <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+            </button>
+          )}
+
           {onRefresh && (
             <button
               type="button"
@@ -50,6 +73,7 @@ export const TopBar: React.FC<TopBarProps> = ({ onRefresh, atualizando }) => {
               <RefreshCw className={`h-4 w-4 ${atualizando ? 'animate-spin text-emerald-400' : ''}`} />
             </button>
           )}
+
           <button
             type="button"
             onClick={sair}

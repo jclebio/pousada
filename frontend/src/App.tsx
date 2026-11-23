@@ -5,12 +5,23 @@ import { BottomNav, type AbaAtiva } from './components/layout/BottomNav';
 import { LoginPage } from './pages/LoginPage';
 import { MapaOperacionalPage } from './pages/MapaOperacionalPage';
 import { RelatoriosPage } from './pages/RelatoriosPage';
+import { HistoricoPage } from './pages/HistoricoPage';
+import { WhatsAppModal } from './components/common/WhatsAppModal';
 
 const AppShell: React.FC = () => {
   const { usuario, carregandoSessao, isGerente } = useAuth();
   const [abaAtiva, setAbaAtiva] = useState<AbaAtiva>('mapa');
   const [sinalAtualizacao, setSinalAtualizacao] = useState(0);
   const [atualizando, setAtualizando] = useState(false);
+  const [mensagemWhatsappModal, setMensagemWhatsappModal] = useState<string | null>(null);
+  const [ultimaMensagemWhatsapp, setUltimaMensagemWhatsapp] = useState<string | null>(null);
+
+  const handleNotificarMensagemWhatsapp = (msg: string | null | undefined) => {
+    if (msg && msg.trim()) {
+      setUltimaMensagemWhatsapp(msg);
+      setMensagemWhatsappModal(msg);
+    }
+  };
 
   if (carregandoSessao) {
     return (
@@ -24,13 +35,20 @@ const AppShell: React.FC = () => {
     return <LoginPage />;
   }
 
-  const abaEfetiva: AbaAtiva = !isGerente && abaAtiva === 'relatorios' ? 'mapa' : abaAtiva;
+  const abaEfetiva: AbaAtiva =
+    !isGerente && abaAtiva === 'relatorios' ? 'mapa' : abaAtiva;
 
   return (
     <div className="min-h-screen bg-slate-50">
       <TopBar
         atualizando={atualizando}
         onRefresh={() => setSinalAtualizacao((n) => n + 1)}
+        temMensagemWhatsapp={Boolean(ultimaMensagemWhatsapp)}
+        onAbrirMensagemWhatsapp={() => {
+          if (ultimaMensagemWhatsapp) {
+            setMensagemWhatsappModal(ultimaMensagemWhatsapp);
+          }
+        }}
       />
 
       <main>
@@ -38,7 +56,10 @@ const AppShell: React.FC = () => {
           <MapaOperacionalPage
             sinalAtualizacao={sinalAtualizacao}
             onMudarEstadoCarregamento={setAtualizando}
+            onNotificarMensagemWhatsapp={handleNotificarMensagemWhatsapp}
           />
+        ) : abaEfetiva === 'historico' ? (
+          <HistoricoPage />
         ) : (
           <RelatoriosPage
             sinalAtualizacao={sinalAtualizacao}
@@ -46,6 +67,11 @@ const AppShell: React.FC = () => {
           />
         )}
       </main>
+
+      <WhatsAppModal
+        mensagem={mensagemWhatsappModal}
+        onFechar={() => setMensagemWhatsappModal(null)}
+      />
 
       <BottomNav abaAtiva={abaEfetiva} onSelecionarAba={setAbaAtiva} />
     </div>

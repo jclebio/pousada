@@ -60,6 +60,18 @@ export interface ReservaItem {
   totalRecebido: number;
   saldoAReceber: number;
   registradoPor: string | null;
+  mensagemWhatsapp?: string | null;
+}
+
+export type HospedagemResponse = ReservaItem;
+
+export interface HistoricoPage {
+  content: ReservaItem[];
+  totalElements: number;
+  totalPages: number;
+  number: number;
+  size: number;
+  last: boolean;
 }
 
 export interface QuartoMapa {
@@ -75,6 +87,7 @@ export interface QuartoMapa {
   atualizadoEm: string;
   hospedagemAtual: HospedagemResumoMapa | null;
   proximaReserva?: HospedagemResumoMapa | null;
+  mensagemWhatsapp?: string | null;
 }
 
 export interface QuartoRequest {
@@ -108,6 +121,21 @@ export interface ReservaPayload {
   valorTotal: number;
   valorAntecipado?: number;
   observacaoQuarto?: string;
+}
+
+export interface RenovarDiariaPayload {
+  diariasAdicionais: number;
+  valorAdicional: number;
+  valorPagoAgora?: number;
+  observacao?: string;
+}
+
+export interface EditarHospedagemPayload {
+  nomeHospede: string;
+  quantidadePessoas: number;
+  valorTotal: number;
+  valorPagoCheckin?: number;
+  motivo: string;
 }
 
 export interface DesempenhoQuarto {

@@ -18,6 +18,7 @@ public record QuartoMapaDTO(
         LocalDate dataCriacao,
         LocalDateTime atualizadoEm,
         HospedagemResumoMapaDTO hospedagemAtual,
-        HospedagemResumoMapaDTO proximaReserva
+        HospedagemResumoMapaDTO proximaReserva,
+        String mensagemWhatsapp
 ) {
 }
