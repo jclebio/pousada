@@ -75,6 +75,9 @@ public class Hospedagem {
     @Column(name = "motivo_estorno", length = 255)
     private String motivoEstorno;
 
+    @Column(name = "motivo_cancelamento", length = 500)
+    private String motivoCancelamento;
+
     @Column(name = "criado_em", nullable = false)
     private LocalDateTime criadoEm;
 
@@ -245,6 +248,14 @@ public class Hospedagem {
 
     public void setMotivoEstorno(String motivoEstorno) {
         this.motivoEstorno = motivoEstorno;
+    }
+
+    public String getMotivoCancelamento() {
+        return motivoCancelamento;
+    }
+
+    public void setMotivoCancelamento(String motivoCancelamento) {
+        this.motivoCancelamento = motivoCancelamento;
     }
 
     public LocalDateTime getCriadoEm() {

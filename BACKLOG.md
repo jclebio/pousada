@@ -1,11 +1,38 @@
 # Backlog — Pousada Gestão
 
-> Atualizado em: 2026-11-22  
+> Atualizado em: 2026-11-23  
 > Monorepo: `backend/` (Java 21 / Spring Boot 3.4 / PostgreSQL 16 / Flyway) + `frontend/` (React 18 / TypeScript / Vite / Tailwind)
 
 ---
 
 ## Prioridade Alta
+
+### ✅ Item 7 — Confirmação, motivo obrigatório e auditoria no cancelamento de reservas
+**Status:** Implementado (2026-11-23)
+
+**Problema:** Clicar em "Cancelar" no card do quarto ou na lista de reservas disparava apenas um `window.confirm` genérico sem exigir justificativa, permitindo cancelamentos acidentais e sem rastreabilidade de quem cancelou e por qual motivo.
+
+**Solução implementada:**
+- **Backend:**
+  - Adicionada migration Flyway `V6__add_motivo_cancelamento_to_hospedagens.sql` com coluna `motivo_cancelamento VARCHAR(500)`.
+  - Criado DTO `CancelarReservaRequest` com validação `@NotBlank` e `@Size(max = 500)`.
+  - Entidade `Hospedagem` atualizada com o campo `motivoCancelamento`.
+  - `HospedagemController` e `HospedagemService` atualizados para receber o motivo obrigatório, salvar na reserva e registrar auditoria completa em `historico_operacoes` com tipo `CANCELAMENTO_RESERVA`, quarto, hóspede, motivo e usuário logado.
+  - Testes automatizados cobrindo cancelamento com motivo válido, rejeição (400 Bad Request) sem motivo/em branco e verificação do registro em `historico_operacoes`.
+- **Frontend:**
+  - Criado componente `ModalCancelamentoReserva` (design mobile-first com bottom-sheet) exibindo dados da reserva (quarto, hóspede, datas previstas) e seleção rápida de motivos (*"Desistência do hóspede"*, *"No-show (não compareceu)"*, *"Erro de lançamento"*, *"Outro"* com campo de texto livre obrigatório).
+  - Botão de confirmação destrutivo desabilitado até o preenchimento do motivo, com estado de loading e bloqueio contra duplo clique.
+  - `client.ts` atualizado para enviar `{ motivo }` no corpo do endpoint `POST /api/hospedagens/{id}/cancelar`.
+  - Integração no `MapaOperacionalPage`, fechando o modal, exibindo toast de sucesso e recarregando o mapa e reservas.
+
+**Critério de aceite:**
+- [x] Clicar em cancelar no card do quarto ou lista abre o modal de confirmação e não altera o banco antes da confirmação.
+- [x] O motivo é obrigatório para habilitar o botão de confirmação.
+- [x] Requisições sem motivo ou com motivo em branco são rejeitadas com 400 pelo backend.
+- [x] Registro na tabela `historico_operacoes` gravado com o usuário autenticado, quarto, hóspede e motivo.
+- [x] Testes de backend passando e build TypeScript do frontend limpo.
+
+---
 
 ### ✅ Item 6 — Mensagem pronta para WhatsApp (cópia manual no frontend)
 **Status:** Implementado (2026-11-23)

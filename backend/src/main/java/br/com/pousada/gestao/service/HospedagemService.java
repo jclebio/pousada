@@ -360,7 +360,7 @@ public class HospedagemService {
     }
 
     @Transactional
-    public HospedagemResponse cancelarReserva(Long hospedagemId, UsuarioPrincipal usuarioLogado) {
+    public HospedagemResponse cancelarReserva(Long hospedagemId, String motivo, UsuarioPrincipal usuarioLogado) {
         Hospedagem hospedagem = hospedagemRepository.findById(hospedagemId)
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Reserva não encontrada com ID " + hospedagemId + "."));
 
@@ -373,6 +373,7 @@ public class HospedagemService {
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Usuário não encontrado."));
 
         hospedagem.setStatusHospedagem(StatusHospedagem.CANCELADA);
+        hospedagem.setMotivoCancelamento(motivo);
         Hospedagem salva = hospedagemRepository.save(hospedagem);
 
         // Se o quarto estava com status RESERVADO hoje, verifica se ainda existe outra reserva para hoje
@@ -394,7 +395,7 @@ public class HospedagemService {
         }
 
         registrarHistorico(quarto, salva, usuario, "CANCELAMENTO_RESERVA", quarto.getStatus(), quarto.getStatus(),
-                "Reserva de " + salva.getNomeHospede() + " cancelada.");
+                "Reserva de " + salva.getNomeHospede() + " cancelada. Motivo: " + motivo);
 
         String msgCancelamento = notificacaoWhatsAppService.notificarCancelamentoReserva(
                 quarto.getNumero(),

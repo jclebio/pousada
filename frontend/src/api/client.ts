@@ -205,9 +205,10 @@ export const api = {
     window.URL.revokeObjectURL(url);
   },
 
-  cancelarReserva: (hospedagemId: number) =>
+  cancelarReserva: (hospedagemId: number, motivo: string) =>
     requisitar<HospedagemResponse>(`/hospedagens/${hospedagemId}/cancelar`, {
-      method: 'POST'
+      method: 'POST',
+      body: JSON.stringify({ motivo })
     }),
 
   realizarCheckout: (quartoId: number, valorPagoCheckout?: number, observacaoLimpeza?: string) =>

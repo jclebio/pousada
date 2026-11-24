@@ -1,5 +1,6 @@
 package br.com.pousada.gestao.controller;
 
+import br.com.pousada.gestao.dto.hospedagem.CancelarReservaRequest;
 import br.com.pousada.gestao.dto.hospedagem.CheckinRequest;
 import br.com.pousada.gestao.dto.hospedagem.EditarHospedagemRequest;
 import br.com.pousada.gestao.dto.hospedagem.EstornoRequest;
@@ -97,9 +98,10 @@ public class HospedagemController {
     @PostMapping("/{id}/cancelar")
     public ResponseEntity<HospedagemResponse> cancelarReserva(
             @PathVariable Long id,
+            @Valid @RequestBody CancelarReservaRequest request,
             @AuthenticationPrincipal UsuarioPrincipal principal
     ) {
-        return ResponseEntity.ok(hospedagemService.cancelarReserva(id, principal));
+        return ResponseEntity.ok(hospedagemService.cancelarReserva(id, request.motivo(), principal));
     }
 
     @PostMapping("/{id}/estornar")

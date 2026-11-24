@@ -24,6 +24,7 @@ import { EstornoModal } from '../components/mapa/EstornoModal';
 import { QuartoFormModal } from '../components/mapa/QuartoFormModal';
 import { RenovarDiariaModal } from '../components/mapa/RenovarDiariaModal';
 import { EditarHospedagemModal } from '../components/mapa/EditarHospedagemModal';
+import ModalCancelamentoReserva, { type DadosCancelamento } from '../components/mapa/ModalCancelamentoReserva';
 
 interface MapaOperacionalPageProps {
   sinalAtualizacao: number;
@@ -61,6 +62,7 @@ export const MapaOperacionalPage: React.FC<MapaOperacionalPageProps> = ({
     aberto: boolean;
     quarto?: QuartoMapa | null;
   }>({ aberto: false, quarto: null });
+  const [dadosCancelamento, setDadosCancelamento] = useState<DadosCancelamento | null>(null);
 
   const exibirToast = (msg: string) => {
     setToastSucesso(msg);
@@ -137,17 +139,62 @@ export const MapaOperacionalPage: React.FC<MapaOperacionalPageProps> = ({
     setReservaCheckin(resumo);
   };
 
-  const handleCancelarReserva = async (reservaId: number) => {
-    if (!window.confirm('Deseja realmente cancelar esta reserva?')) {
-      return;
+  const obterDadosCancelamento = (reservaId: number): DadosCancelamento => {
+    const reservaEncontrada = reservas.find((r) => r.id === reservaId);
+    if (reservaEncontrada) {
+      return {
+        reservaId,
+        quartoNumero: reservaEncontrada.numeroQuarto,
+        nomeHospede: reservaEncontrada.nomeHospede,
+        dataCheckin: reservaEncontrada.dataCheckin,
+        dataCheckoutPrevista: reservaEncontrada.dataCheckoutPrevista
+      };
     }
+
+    for (const q of quartos) {
+      if (q.hospedagemAtual && q.hospedagemAtual.id === reservaId) {
+        return {
+          reservaId,
+          quartoNumero: q.numero,
+          nomeHospede: q.hospedagemAtual.nomeHospede,
+          dataCheckin: q.hospedagemAtual.dataCheckin,
+          dataCheckoutPrevista: q.hospedagemAtual.dataCheckoutPrevista
+        };
+      }
+      if (q.proximaReserva && q.proximaReserva.id === reservaId) {
+        return {
+          reservaId,
+          quartoNumero: q.numero,
+          nomeHospede: q.proximaReserva.nomeHospede,
+          dataCheckin: q.proximaReserva.dataCheckin,
+          dataCheckoutPrevista: q.proximaReserva.dataCheckoutPrevista
+        };
+      }
+    }
+
+    return {
+      reservaId,
+      quartoNumero: '-',
+      nomeHospede: `Reserva #${reservaId}`,
+      dataCheckin: '',
+      dataCheckoutPrevista: ''
+    };
+  };
+
+  const handleCancelarReserva = (reservaId: number) => {
+    setDadosCancelamento(obterDadosCancelamento(reservaId));
+  };
+
+  const handleConfirmarCancelamento = async (reservaId: number, motivo: string) => {
     try {
-      const res = await api.cancelarReserva(reservaId);
+      const res = await api.cancelarReserva(reservaId, motivo);
+      setDadosCancelamento(null);
       exibirToast('Reserva cancelada com sucesso.');
       if (res.mensagemWhatsapp) onNotificarMensagemWhatsapp?.(res.mensagemWhatsapp);
       await carregarDados();
     } catch (err) {
       setErroBanner(err instanceof Error ? err.message : 'Falha ao cancelar reserva.');
+      throw err;
     }
   };
 
@@ -404,6 +451,13 @@ export const MapaOperacionalPage: React.FC<MapaOperacionalPageProps> = ({
           onSalvar={handleSalvarQuarto}
         />
       )}
+
+      <ModalCancelamentoReserva
+        aberto={Boolean(dadosCancelamento)}
+        dados={dadosCancelamento}
+        onFechar={() => setDadosCancelamento(null)}
+        onConfirmar={handleConfirmarCancelamento}
+      />
     </div>
   );
 };

@@ -28,6 +28,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -353,11 +354,20 @@ class PousadaFluxoOperacionalERelatorioTest {
                 .andExpect(jsonPath("$[0].nomeHospede").value("Chegada Hoje"))
                 .andExpect(jsonPath("$[1].nomeHospede").value("Fernanda Lima"));
 
-        // 4. Cancelamento de reserva
+        // 4. Cancelamento de reserva (com motivo obrigatório)
         mockMvc.perform(post("/api/hospedagens/" + reservaId + "/cancelar")
-                        .header("Authorization", "Bearer " + tokenAtendente))
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"motivo\": \"Desistência do hóspede\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.statusHospedagem").value("CANCELADA"));
+
+        // Verifica que o histórico registrou o cancelamento com o motivo
+        List<br.com.pousada.gestao.domain.entity.HistoricoOperacao> historicos = historicoRepository.findAll();
+        assertThat(historicos).anyMatch(h ->
+                h.getTipoOperacao().equals("CANCELAMENTO_RESERVA") &&
+                h.getDetalhes().contains("Desistência do hóspede")
+        );
 
         // Após cancelamento, proximaReserva no quarto01 volta a ser nula
         mockMvc.perform(get("/api/quartos")
@@ -754,5 +764,51 @@ class PousadaFluxoOperacionalERelatorioTest {
         h.setValorPagoCheckin(valorPagoCheckin);
         h.setValorPagoCheckout(valorPagoCheckout);
         return hospedagemRepository.save(h);
+    }
+
+    @Test
+    void deveFalharAoCancelarReservaSemMotivo() throws Exception {
+        LocalDate amanha = LocalDate.now().plusDays(1);
+        Hospedagem reserva = salvarHospedagem(quarto01, "Hóspede Sem Motivo", amanha, 2,
+                null, StatusHospedagem.RESERVADA,
+                new BigDecimal("200.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+
+        // Sem body → 400
+        mockMvc.perform(post("/api/hospedagens/" + reserva.getId() + "/cancelar")
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+
+        // Motivo em branco → 400
+        mockMvc.perform(post("/api/hospedagens/" + reserva.getId() + "/cancelar")
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"motivo\": \"\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void deveCancelarReservaComMotivoERegistrarHistorico() throws Exception {
+        LocalDate amanha = LocalDate.now().plusDays(1);
+        Hospedagem reserva = salvarHospedagem(quarto01, "Hóspede Auditado", amanha, 2,
+                null, StatusHospedagem.RESERVADA,
+                new BigDecimal("300.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        quarto01.setStatus(StatusQuarto.RESERVADO);
+        quartoRepository.save(quarto01);
+
+        mockMvc.perform(post("/api/hospedagens/" + reserva.getId() + "/cancelar")
+                        .header("Authorization", "Bearer " + tokenAtendente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"motivo\": \"Erro de lançamento\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.statusHospedagem").value("CANCELADA"));
+
+        List<br.com.pousada.gestao.domain.entity.HistoricoOperacao> historicos = historicoRepository.findAll();
+        assertThat(historicos).anyMatch(h ->
+                h.getTipoOperacao().equals("CANCELAMENTO_RESERVA") &&
+                h.getDetalhes().contains("Erro de lançamento") &&
+                h.getDetalhes().contains("Hóspede Auditado")
+        );
     }
 }
